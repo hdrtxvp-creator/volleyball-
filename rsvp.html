@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Volleyball — who's coming?</title>
+<meta name="theme-color" content="#081525">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#081525; --panel:#10243F; --court:#1B3557;
+  --chalk:#E8EDF2; --ball:#F2C230; --slate:#7C8CA3;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{
+  margin:0;padding:18px 16px 60px;background:var(--ink);color:var(--chalk);
+  font-family:'Archivo',system-ui,-apple-system,sans-serif;line-height:1.5;
+  max-width:560px;margin-inline:auto;-webkit-text-size-adjust:100%
+}
+h1{
+  font-family:'Anton',Impact,sans-serif;font-weight:400;font-size:30px;margin:0;
+  letter-spacing:.02em;text-transform:uppercase
+}
+h1 em{color:var(--ball);font-style:normal;display:block}
+.lede{color:#B9C6D6;font-size:14px;margin:8px 0 18px}
+.count{
+  background:var(--panel);border-radius:12px;padding:12px 14px;margin:0 0 16px;
+  font-size:13px;color:#B9C6D6;display:flex;gap:14px;flex-wrap:wrap
+}
+.count b{color:var(--ball);font-weight:600}
+.row{
+  display:flex;align-items:center;gap:10px;padding:10px 0;
+  border-bottom:1px solid rgba(232,237,242,.08)
+}
+.row .nm{flex:1;min-width:0;font-weight:600;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.me .nm{color:var(--ball)}
+.btn{
+  flex:none;border-radius:999px;padding:8px 12px;cursor:pointer;font:inherit;font-size:12px;font-weight:600;
+  background:transparent;border:1px solid rgba(232,237,242,.22);color:#B9C6D6
+}
+.btn.yes.on{background:var(--ball);border-color:var(--ball);color:#0A1A2C}
+.btn.watch.on{background:rgba(242,194,48,.18);border-color:rgba(242,194,48,.5);color:var(--ball)}
+.btn.no.on{background:rgba(232,237,242,.14);border-color:rgba(232,237,242,.3);color:var(--chalk)}
+.addbox{background:var(--panel);border-radius:12px;padding:14px;margin-top:20px}
+.addbox p{margin:0 0 10px;font-size:13px;color:#B9C6D6}
+.addbox .go{
+  width:100%;margin-top:8px;border-radius:10px;padding:11px;cursor:pointer;font:inherit;font-size:14px;font-weight:600;
+  background:var(--ball);border:0;color:#0A1A2C
+}
+.mine{font-size:11px;color:var(--slate);margin-left:6px}
+.btn:active{transform:scale(.97)}
+.note{margin:18px 0 0;font-size:12px;color:var(--slate)}
+.bad{color:#F2C230}
+.spin{opacity:.5}
+.search{
+  width:100%;margin:0 0 14px;padding:11px 12px;border-radius:10px;
+  background:var(--panel);border:1px solid rgba(232,237,242,.14);color:var(--chalk);font:inherit;font-size:15px
+}
+.search::placeholder{color:var(--slate)}
+</style>
+</head>
+<body>
+
+<h1>Weekly<em>Volleyball</em></h1>
+<p class="lede" id="lede">Find your name and say whether you are <b>playing</b>, just <b>watching</b>, or <b>out</b>. Not on the list? There is a box at the bottom to add yourself.</p>
+
+<p class="count" id="demoFlag" hidden style="color:var(--ball)"></p>
+<p class="count" id="count" hidden></p>
+<input class="search" id="find" placeholder="Type your name to find it" autocomplete="off">
+<div id="list"></div>
+
+<div class="addbox">
+  <p>Not on the list? Add yourself — whoever runs the group will see it and add you to the roster.</p>
+  <input class="search" id="newName" placeholder="Your name" autocomplete="name" style="margin:0">
+  <button class="go" id="newPlay">Add me — playing</button>
+  <button class="go" id="newWatch" style="background:transparent;border:1px solid rgba(242,194,48,.5);color:var(--ball)">Add me — just watching</button>
+</div>
+
+<p class="note" id="note"></p>
+
+<script>
+const qs = new URLSearchParams(location.search);
+const b64in = s => { try { return decodeURIComponent(escape(atob(String(s).replace(/-/g,'+').replace(/_/g,'/')))); } catch(e){ return ''; } };
+
+const SHEET = qs.get('s') || '';
+const ONLY  = b64in(qs.get('n') || '');
+const URLB  = b64in(qs.get('u'));
+const KEY   = b64in(qs.get('k'));
+
+const listEl  = document.getElementById('list');
+const noteEl  = document.getElementById('note');
+const countEl = document.getElementById('count');
+const findEl  = document.getElementById('find');
+
+let names = [], week = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
+const solo = () => !!ONLY;
+
+const H = () => ({ apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' });
+
+const DEMO_KEY = 'volleyball-demo-sheet';
+function demoApi(path, opts){
+  let db;
+  try { db = JSON.parse(localStorage.getItem(DEMO_KEY)) || { sheets:[], signups:[] }; }
+  catch(e){ db = { sheets:[], signups:[] }; }
+  const [table, query] = String(path).split('?');
+  const q = new URLSearchParams(query || '');
+  const eq = k => { const v = q.get(k); return v === null ? null : v.replace(/^eq\./, ''); };
+  if (!db[table]) db[table] = [];
+
+  if (opts && opts.method === 'POST'){
+    const keys = table === 'sheets' ? ['sheet'] : ['sheet', 'week', 'name'];
+    JSON.parse(opts.body).forEach(r => {
+      const at = db[table].findIndex(x => keys.every(k => x[k] === r[k]));
+      if (at >= 0) db[table][at] = Object.assign({}, db[table][at], r);
+      else db[table].push(r);
+    });
+    try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){}
+    return null;
+  }
+  let rows = db[table].slice();
+  ['sheet','week','name'].forEach(k => {
+    const v = eq(k);
+    if (v !== null) rows = rows.filter(x => String(x[k]) === v);
+  });
+  return rows;
+}
+
+async function sb(path, opts){
+  if (URLB === 'demo') return demoApi(path, opts);
+  const r = await fetch(URLB.replace(/\/+$/, '') + '/rest/v1/' + path, opts || { headers: H() });
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 120));
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+
+function render(){
+  const shown = solo() ? [ONLY] : names.filter(n => !filter || n.toLowerCase().includes(filter));
+  listEl.innerHTML = shown.length
+    ? shown.map(n => {
+        const a = answers[n], w = watching[n] === true;
+        return `<div class="row${busy[n] ? ' spin' : ''}">
+          <span class="nm">${esc(n)}${added.includes(n) ? '<span class="mine">added by you</span>' : ''}</span>
+          <button class="btn yes${a === true && !w ? ' on' : ''}" data-n="${esc(n)}" data-v="play">Playing</button>
+          <button class="btn watch${w ? ' on' : ''}" data-n="${esc(n)}" data-v="watch">Watching</button>
+          <button class="btn no${a === false ? ' on' : ''}" data-n="${esc(n)}" data-v="out">Out</button>
+        </div>`;
+      }).join('')
+    : `<p class="note">No name matches that. Check the spelling, or ask whoever runs the group to add you.</p>`;
+
+  if (solo()){ countEl.hidden = true; return; }
+  const yes = names.filter(n => answers[n] === true && !watching[n]).length;
+  const wat = names.filter(n => watching[n] === true).length;
+  const no  = names.filter(n => answers[n] === false).length;
+  countEl.hidden = false;
+  countEl.innerHTML = `<span><b>${yes}</b> playing</span><span><b>${wat}</b> watching</span><span><b>${no}</b> out</span><span><b>${Math.max(0, names.length - yes - wat - no)}</b> quiet</span>`;
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function load(quiet){
+  if (!SHEET || !URLB || !KEY){
+    noteEl.innerHTML = '<span class="bad">This link is missing part of its address.</span> Ask for the link again.';
+    findEl.hidden = true;
+    return;
+  }
+  try {
+    const sheet = await sb(`sheets?sheet=eq.${encodeURIComponent(SHEET)}&select=week,names`);
+    if (!sheet || !sheet.length){
+      noteEl.innerHTML = '<span class="bad">No sign-up sheet here yet.</span> It opens when the teams are being sorted for the week.';
+      return;
+    }
+    week  = sheet[0].week;
+    names = sheet[0].names || [];
+    const rows = await sb(`signups?sheet=eq.${encodeURIComponent(SHEET)}&week=eq.${encodeURIComponent(week)}&select=name,coming,watch`);
+    answers = {}; watching = {};
+    (rows || []).forEach(r => {
+      answers[r.name] = r.coming;
+      watching[r.name] = r.watch === true;
+      if (!names.includes(r.name)) names.push(r.name);   // people who added themselves
+    });
+    if (solo() && !names.includes(ONLY)) names.push(ONLY);
+    noteEl.textContent = solo()
+      ? 'If you do not tap anything, you are counted as not coming.'
+      : 'You can change your answer any time before the teams go out.';
+    render();
+  } catch(err){
+    if (!quiet) noteEl.innerHTML = '<span class="bad">Could not reach the sheet.</span> Check your signal and pull down to reload.';
+  }
+}
+
+async function answer(name, kind){
+  const coming = kind !== 'out', watch = kind === 'watch';
+  const hadA = answers[name], hadW = watching[name];
+  answers[name] = coming; watching[name] = watch;
+  busy[name] = true;
+  render();
+  try {
+    await sb('signups?on_conflict=sheet,week,name', {
+      method: 'POST',
+      headers: Object.assign(H(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify([{ sheet: SHEET, week, name, coming, watch, updated_at: new Date().toISOString() }])
+    });
+    noteEl.textContent = watch ? `Noted — you're watching.`
+      : coming ? `Got it — you're playing.` : `Noted — you're out this week.`;
+  } catch(err){
+    noteEl.innerHTML = '<span class="bad">That did not save.</span> Tap it again when you have signal.';
+    answers[name] = hadA; watching[name] = hadW;
+  }
+  delete busy[name];
+  render();
+}
+
+async function addMe(kind){
+  const raw = document.getElementById('newName').value.trim().replace(/\s+/g, ' ');
+  if (raw.length < 2 || raw.length > 40){
+    noteEl.innerHTML = '<span class="bad">Put your name in the box first.</span>';
+    return;
+  }
+  const already = names.find(n => n.toLowerCase() === raw.toLowerCase());
+  const name = already || raw;
+  if (!already){ names.push(name); added.push(name); }
+  document.getElementById('newName').value = '';
+  filter = ''; findEl.value = '';
+  await answer(name, kind);
+  noteEl.textContent = already
+    ? `${name} was already on the list — your answer is saved.`
+    : `Thanks ${name} — you are on this week's list. You will be added to the regular roster.`;
+}
+
+listEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-n]');
+  if (b) answer(b.dataset.n, b.dataset.v);
+});
+document.getElementById('newPlay').onclick  = () => addMe('play');
+document.getElementById('newWatch').onclick = () => addMe('watch');
+findEl.addEventListener('input', e => { filter = e.target.value.trim().toLowerCase(); render(); });
+
+if (solo()){
+  document.getElementById('find').hidden = true;
+  document.querySelector('.addbox').hidden = true;
+  document.getElementById('lede').innerHTML =
+    'Hi <b>' + esc(ONLY) + '</b> — are you playing this week? Tap one. You can change it any time before the teams go out.';
+}
+
+if (URLB === 'demo'){
+  const f = document.getElementById('demoFlag');
+  f.hidden = false;
+  f.textContent = 'Practice run — this is a pretend sheet on this device only. Nothing is sent anywhere.';
+}
+
+load();
+setInterval(() => { if (document.visibilityState === 'visible') load(true); }, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(true); });
+</script>
+</body>
+</html>

@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#081525">
+<meta name="description" content="Splits the weekly volleyball group into even sides and sends the teams to WhatsApp.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon-32.png" sizes="32x32">
+<link rel="icon" href="icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Volleyball">
+<title>Volleyball team picker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#081525;
+  --panel:#10243F;
+  --court:#1B3557;
+  --chalk:#E8EDF2;
+  --ball:#F2C230;
+  --slate:#7C8CA3;
+  --line:rgba(232,237,242,.14);
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;padding:0}
+body{
+  background:var(--ink);
+  color:var(--chalk);
+  font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+  font-size:16px;line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:660px;margin:0 auto;padding:22px 16px 64px}
+.mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace}
+
+header{display:flex;align-items:center;gap:12px;justify-content:space-between;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:6px}
+h1{
+  font-family:'Anton',Impact,sans-serif;font-weight:400;
+  font-size:clamp(38px,11vw,58px);line-height:.9;letter-spacing:.01em;
+  margin:0;text-transform:uppercase;
+}
+h1 em{font-style:normal;color:var(--ball);display:block}
+.weekbox{text-align:right;flex:none}
+.weekbox b{display:block;font-family:'IBM Plex Mono',monospace;font-size:34px;line-height:1;color:var(--ball)}
+.weekbox span{font-size:12px;color:var(--slate);letter-spacing:.08em}
+.lede{color:var(--slate);font-size:14px;margin:10px 0 24px;max-width:56ch}
+.status{
+  font-family:'Archivo',system-ui,sans-serif;font-size:12px;margin:12px 0 0;padding:9px 12px;border-radius:10px;
+  background:rgba(242,194,48,.08);border:1px solid rgba(242,194,48,.28);color:#F7DC93
+}
+.status.plain{background:rgba(232,237,242,.05);border-color:var(--line);color:var(--slate)}
+
+section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px;color:var(--slate);letter-spacing:.04em}
+.label b{color:var(--chalk);font-weight:600}
+
+/* segmented control */
+.seg{display:inline-flex;background:var(--ink);border:1px solid var(--line);border-radius:999px;padding:2px}
+.seg button{
+  font:inherit;font-size:12px;color:var(--slate);background:none;border:0;border-radius:999px;
+  padding:5px 11px;cursor:pointer
+}
+.seg button[aria-pressed="true"]{background:var(--court);color:var(--chalk)}
+
+/* roster chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{
+  display:inline-flex;align-items:center;gap:8px;
+  background:var(--court);border:1px solid transparent;border-radius:10px;
+  padding:7px 8px 7px 11px;cursor:pointer;color:var(--chalk);
+  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.01em;
+}
+.chip:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--ball);outline-offset:2px}
+.chip .meta{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate);letter-spacing:0}
+.chip .dots{letter-spacing:1px;font-size:10px;color:var(--ball)}
+.chip.out{background:transparent;border-color:var(--line);color:var(--slate);text-decoration:line-through}
+.chip.out .dots{color:var(--slate)}
+.chip .x{
+  font:inherit;font-family:'Archivo',sans-serif;font-size:15px;line-height:1;
+  background:none;border:0;color:var(--slate);cursor:pointer;padding:2px 4px;border-radius:6px
+}
+.chip .x:hover{color:var(--ball)}
+
+/* ranking rows */
+.rrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--line)}
+.rrow:last-child{border-bottom:0}
+.rrow .rname{flex:1 1 84px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.01em}
+.av{
+  flex:none;font:inherit;font-size:11px;font-family:'Archivo',system-ui,sans-serif;cursor:pointer;
+  border:1px solid var(--line);background:transparent;color:var(--slate);
+  border-radius:999px;padding:5px 10px;white-space:nowrap
+}
+.av.in{border-color:rgba(242,194,48,.5);color:var(--ball)}
+.rrow .stars{margin-left:auto}
+.rrow .x{flex:none;font-size:17px;line-height:1;background:none;border:0;color:var(--slate);cursor:pointer;padding:4px 6px;border-radius:6px}
+.rrow .x:hover{color:var(--ball)}
+.rrow.out .rname{color:var(--slate)}
+.rrow .rname{cursor:text}
+.rrow input.rname{flex:1 1 84px;min-width:0;background:#0C1C31;border:1px solid var(--ball);border-radius:8px;color:var(--chalk);padding:4px 6px;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.01em;outline:none}
+.stars{display:flex;gap:4px;flex:none}
+.stars button{
+  width:26px;height:26px;border-radius:50%;cursor:pointer;
+  border:1px solid var(--line);background:var(--ink);padding:0
+}
+.stars button.on{background:var(--ball);border-color:var(--ball)}
+.stars button.half{background:linear-gradient(90deg,var(--ball) 0 50%,var(--ink) 50% 100%);border-color:var(--ball)}
+.rrow .g{width:64px;text-align:right;font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate)}
+.rrow .g b{color:var(--chalk);font-weight:500;font-size:13px}
+.rrow.hit{animation:flash 1s ease}
+@keyframes flash{0%{background:rgba(242,194,48,.22)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.rrow.hit{animation:none;background:rgba(242,194,48,.12)}}
+.stars button{touch-action:manipulation}
+.hint{font-size:13px;color:var(--slate);margin:12px 0 0}
+
+/* add players */
+.addbox{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
+.addbox>p{margin:0 0 8px;font-size:13px;color:var(--slate)}
+.add{display:flex;gap:8px}
+#sheetSetup:not([hidden]){margin-top:10px;display:grid;gap:8px}
+input[type=text],#sheetSetup input,textarea{
+  flex:1;background:var(--ink);border:1px solid var(--line);border-radius:10px;
+  color:var(--chalk);font:inherit;font-size:15px;padding:10px 12px;width:100%
+}
+textarea{min-height:92px;resize:vertical}
+button.ghost{
+  font:inherit;font-size:14px;background:transparent;color:var(--chalk);
+  border:1px solid var(--line);border-radius:10px;padding:10px 14px;cursor:pointer
+}
+button.ghost:hover{border-color:var(--ball);color:var(--ball)}
+button.switch{font:inherit;font-size:13px;background:none;border:0;color:var(--slate);cursor:pointer;padding:8px 0 0;text-decoration:underline}
+
+/* settings */
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0}
+.setrow+.setrow{border-top:1px solid var(--line)}
+.setrow .name{font-size:14px}
+.stepper{display:inline-flex;align-items:center;gap:10px;flex:none}
+.stepper button{
+  width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--ink);
+  color:var(--chalk);font-size:18px;line-height:1;cursor:pointer
+}
+.stepper button:disabled{opacity:.3;cursor:default}
+.stepper b{font-family:'IBM Plex Mono',monospace;font-size:17px;min-width:20px;text-align:center;color:var(--ball)}
+.sizes{margin-top:4px}
+.sizes .setrow .name{font-family:'Anton',Impact,sans-serif;text-transform:uppercase;font-size:15px;letter-spacing:.02em}
+.spots{font-family:'Archivo',system-ui,sans-serif;font-size:12px;color:var(--slate);margin:12px 0 0}
+.spots.warn{color:var(--ball)}
+.toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px}
+.toggle input{accent-color:var(--ball);width:18px;height:18px}
+.fitrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+a.ghost{text-decoration:none;display:inline-block;text-align:center}
+a.ghost.wa{border-color:rgba(37,211,102,.55);color:#7EE2A8}
+a.ghost.wa:hover{border-color:#25D366;color:#25D366}
+#shareText{margin-top:10px;font-family:'Archivo',system-ui,sans-serif;font-size:12px;min-height:150px}
+
+/* courts */
+.court{
+  background:var(--court);border-radius:12px;padding:18px 14px 16px;margin-bottom:14px;
+  border-top:6px solid transparent;
+  background-image:repeating-linear-gradient(90deg,var(--chalk) 0 3px,transparent 3px 8px);
+  background-size:100% 6px;background-repeat:no-repeat;background-position:top left;
+  box-shadow:inset 0 0 0 1px rgba(232,237,242,.08)
+}
+.chead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
+.chead h3{font-family:'Anton',Impact,sans-serif;font-weight:400;font-size:19px;text-transform:uppercase;margin:0;letter-spacing:.03em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tag{font-family:'IBM Plex Mono',monospace;font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 8px}
+.tag.go{background:var(--ball);color:#0A1A2C;font-weight:600;box-shadow:0 0 0 3px rgba(242,194,48,.22)}
+.tag.wait{background:rgba(232,237,242,.08);color:var(--slate)}
+.first{font-family:'Archivo',system-ui,sans-serif;font-size:12px;color:#B9C6D6;margin:4px 0 0;line-height:1.7}
+.first b{color:var(--ball);font-weight:500}
+.first .past{display:block;color:var(--slate);font-size:11px}
+.chead span{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:#B9C6D6}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.slot{
+  position:relative;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+  background:rgba(8,21,37,.55);border:1px solid rgba(232,237,242,.12);border-radius:10px;
+  padding:10px 8px;text-align:center;min-height:68px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  animation:pop .34s cubic-bezier(.2,.8,.3,1.2) backwards;animation-delay:calc(var(--i)*60ms)
+}
+.slot .pos{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--slate)}
+.slot .who{font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px;line-height:1.15;letter-spacing:.01em}
+.slot .rk{font-size:10px;color:var(--ball);letter-spacing:1px}
+.next{background:rgba(8,21,37,.45);border:1px solid rgba(232,237,242,.1);border-radius:12px;padding:12px;margin-top:14px}
+.next .nhead{
+  margin:0 0 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-family:'Archivo',system-ui,sans-serif;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--slate)
+}
+.next .vs{display:flex;align-items:center;gap:10px}
+.next .v{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate);flex:none}
+.next .won{
+  flex:1;min-width:0;background:var(--court);border:1px solid rgba(242,194,48,.45);color:var(--chalk);
+  border-radius:10px;padding:12px 8px;cursor:pointer;
+  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px
+}
+.next .won:hover{background:rgba(242,194,48,.14)}
+.next .won:active{transform:scale(.98)}
+.next .upnext{margin:10px 0 0;font-family:'Archivo',system-ui,sans-serif;font-size:13px;color:#B9C6D6}
+.next .past{display:block;color:var(--slate);font-size:11px;margin-top:4px}
+#askWrap{
+  position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(4,10,20,.72)
+}
+.askbox{
+  background:var(--panel);border:1px solid rgba(232,237,242,.14);border-radius:14px;
+  padding:18px;max-width:380px;width:100%;box-shadow:0 18px 40px rgba(0,0,0,.5)
+}
+.askbox p{margin:0 0 14px;font-size:15px;line-height:1.5;color:var(--chalk)}
+.askbox .yes{border-color:var(--ball);color:var(--ball)}
+.rulerow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(232,237,242,.07)}
+.rulerow .rt{
+  flex:none;font-family:'Archivo',system-ui,sans-serif;font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+  border-radius:999px;padding:3px 8px;background:rgba(232,237,242,.1);color:#B9C6D6
+}
+.rulerow .rt.apart{background:rgba(242,194,48,.16);color:var(--ball)}
+.rulerow .rn{flex:1;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px}
+.rulerow .x{flex:none;font-size:17px;line-height:1;background:none;border:0;color:var(--slate);cursor:pointer;padding:4px 6px;border-radius:6px}
+.rulerow .x:hover{color:var(--ball)}
+.chip.picked{border-color:var(--ball);background:rgba(242,194,48,.14)}
+.slot.cap{border-color:rgba(242,194,48,.55)}
+.slot .capb{
+  position:absolute;top:4px;right:4px;width:16px;height:16px;border-radius:50%;
+  background:var(--ball);color:#0A1A2C;font-family:'IBM Plex Mono',monospace;font-size:10px;
+  line-height:16px;font-weight:500
+}
+.slot.dragging{opacity:.3}
+.slot.over{border-color:var(--ball);background:rgba(242,194,48,.14)}
+.court.over{box-shadow:inset 0 0 0 2px var(--ball)}
+.slot.ghost{
+  position:fixed;z-index:60;pointer-events:none;animation:none;margin:0;
+  background:var(--court);border-color:var(--ball);opacity:.96;
+  box-shadow:0 12px 28px rgba(0,0,0,.5);transform:scale(1.05)
+}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.96)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.slot{animation:none}}
+
+/* bench */
+.bench{display:flex;flex-direction:column;gap:2px}
+.brow{display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.brow:last-child{border-bottom:0}
+.brow .bn{font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px;letter-spacing:.01em;color:#C7D2DF}
+.brow .bw{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate)}
+
+.pick{
+  width:100%;font-family:'Anton',Impact,sans-serif;font-size:21px;text-transform:uppercase;letter-spacing:.04em;
+  background:var(--ball);color:#0A1A2C;border:0;border-radius:14px;padding:16px;cursor:pointer;margin-top:6px
+}
+.pick:active{transform:translateY(1px)}
+.note{background:rgba(242,194,48,.1);border:1px solid rgba(242,194,48,.35);color:#F7DC93;border-radius:12px;padding:12px 14px;font-size:14px;margin:14px 0 0}
+.foot{display:flex;gap:8px;margin-top:14px}
+.foot button{flex:1}
+.empty{color:var(--slate);font-size:14px;margin:0}
+.linkish{color:var(--ball);font-size:12px;cursor:pointer;text-decoration:underline;font-weight:400}
+.chips.res .tchip{
+  font-family:'Anton',Impact,sans-serif;font-size:15px;text-transform:uppercase;letter-spacing:.02em;
+  background:var(--court);color:var(--chalk);border:1px solid transparent;border-radius:10px;padding:9px 14px;cursor:pointer
+}
+.chips.res .tchip.sel{border-color:var(--ball);color:var(--ball)}
+.gamerow{display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px solid var(--line);font-size:14px}
+.gamerow:last-child{border-bottom:0}
+.gamerow .gt{font-family:'Archivo',system-ui,sans-serif;font-size:12px;color:var(--slate)}
+.gamerow b{font-weight:500;color:var(--chalk)}
+#shot{width:100%;height:auto;border-radius:12px;margin-top:12px;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Weekly<em>Volleyball</em></h1>
+  <button class="ghost" id="installBtn" hidden>Install</button>
+</header>
+<p class="status" id="status" hidden></p>
+<p class="lede">Splits everyone who is playing into even sides, spreads the strong players around, and rotates which side waits out the first game.</p>
+
+<section>
+  <div class="label">
+    <span>Roster <b id="rosterCount"></b></span>
+    <span class="seg" id="viewSeg">
+      <button data-view="chips" aria-pressed="true">Names</button>
+      <button data-view="ranks" aria-pressed="false">Rankings</button>
+    </span>
+  </div>
+  <div id="rosterBody"></div>
+  <p class="hint" id="rosterHint"></p>
+
+  <div class="addbox">
+    <p>Add players</p>
+    <div class="add" id="singleAdd">
+      <input type="text" id="nameInput" placeholder="Player name" autocomplete="off">
+      <button class="ghost" id="addBtn">Add</button>
+    </div>
+    <div id="bulkAdd" hidden>
+      <textarea id="bulkInput" placeholder="One name per line&#10;KP&#10;Lalu&#10;Tarang"></textarea>
+      <button class="ghost" id="bulkBtn" style="margin-top:8px;width:100%">Add all of them</button>
+    </div>
+    <button class="switch" id="switchMode">Add several at once</button>
+  </div>
+
+  <div class="addbox">
+    <p>Who's coming this week</p>
+    <div class="fitrow" style="margin-top:0">
+      <button class="ghost" id="allIn">Everyone in</button>
+      <button class="ghost" id="allOut">Everyone out</button>
+      <button class="ghost" id="pasteBtn">Paste who's coming</button>
+    </div>
+    <div id="pasteBox" hidden style="margin-top:10px">
+      <textarea id="pasteIn" placeholder="Paste the names — one per line, or separated by commas"></textarea>
+      <button class="ghost" id="pasteApply" style="margin-top:8px;width:100%">Mark exactly these as coming</button>
+    </div>
+    <p class="hint" id="comingHint">Paste the replies out of WhatsApp and the app marks exactly those players as coming, everyone else as not.</p>
+  </div>
+
+  <div class="addbox">
+    <p>Roster backup</p>
+    <div class="fitrow" style="margin-top:0">
+      <button class="ghost" id="expBtn">Copy my roster</button>
+      <button class="ghost" id="impBtn">Paste a roster</button>
+    </div>
+    <div id="expBox" hidden style="margin-top:10px">
+      <textarea id="expOut" readonly></textarea>
+    </div>
+    <div id="impBox" hidden style="margin-top:10px">
+      <textarea id="impIn" placeholder="Paste a roster here — one player per line, name | rating"></textarea>
+      <button class="ghost" id="impApply" style="margin-top:8px;width:100%">Add these players</button>
+    </div>
+    <div class="fitrow">
+      <button class="ghost" id="dlBtn">Download a backup</button>
+      <button class="ghost" id="rsBtn">Restore a backup</button>
+      <input type="file" id="rsFile" accept=".json,.txt,application/json,text/plain" hidden>
+    </div>
+    <p class="hint" id="backupHint">Keep this private. The copied list and backup file include everyone's rating, so don't send them to the group.</p>
+  </div>
+
+</section>
+
+<section id="sheetSection">
+  <div class="label"><span>Sign-up sheet</span></div>
+  <div class="fitrow" style="margin-top:0">
+    <button class="ghost" id="sheetNew">Open this week's sheet</button>
+    <button class="ghost" id="sheetCopy">Copy the link</button>
+    <button class="ghost" id="sheetPull">Check answers</button>
+  </div>
+  <div class="fitrow">
+    <button class="ghost" id="sheetEach">Copy a link for each player</button>
+  </div>
+  <div class="fitrow">
+    <button class="ghost" id="demoBtn">Try it without setting anything up</button>
+  </div>
+  <p class="spots" id="sheetStatus"></p>
+  <div id="sheetGuests"></div>
+  <div id="sheetSetup" hidden>
+    <input id="sbUrl" placeholder="Supabase project URL" autocomplete="off" spellcheck="false">
+    <input id="sbKey" placeholder="anon public key" autocomplete="off" spellcheck="false">
+    <input id="sbPage" placeholder="Address of rsvp.html (leave blank if it sits beside this app)" autocomplete="off" spellcheck="false">
+    <button class="ghost" id="sbSave" style="width:100%;margin-top:8px">Save these</button>
+  </div>
+  <button class="switch" id="sheetSetupBtn">Sheet settings</button>
+  <p class="hint" id="sheetHint"></p>
+</section>
+
+<section id="rulesSection">
+  <div class="label"><span>Pairing rules</span></div>
+  <div id="ruleList"></div>
+  <div id="ruleBox" hidden>
+    <p class="hint" style="margin-top:8px">Tap everyone this rule covers, then say what it does.</p>
+    <div class="chips" id="rulePick"></div>
+    <div class="fitrow">
+      <button class="ghost" id="ruleApart">Never together</button>
+      <button class="ghost" id="ruleWith">Always together</button>
+      <button class="ghost" id="ruleCancel">Cancel</button>
+    </div>
+  </div>
+  <button class="ghost" id="ruleAdd" style="width:100%;margin-top:10px">Add a rule</button>
+  <p class="hint" id="ruleHint"></p>
+</section>
+
+<section id="sidesSection">
+  <div class="label"><span>Sides</span></div>
+  <div class="setrow">
+    <span class="name" id="teamLabel">How many teams</span>
+    <span class="stepper">
+      <button id="teamMinus" aria-label="Fewer teams">–</button>
+      <b id="teamVal">1</b>
+      <button id="teamPlus" aria-label="More teams">+</button>
+    </span>
+  </div>
+  <div class="setrow" style="margin-top:6px" id="autoRow">
+    <label class="toggle"><input type="checkbox" id="autoChk" checked> Work out the teams for me</label>
+  </div>
+  <p class="spots" id="spots"></p>
+  <p class="hint">Left to itself the app aims for sides of about six and counts them off the players coming: 15 makes three fives, 19 makes three sixes with the spare player added to one side, 24 makes four sixes. Turn the switch off to set the number yourself. Either way everyone available plays, and the sides are evened out by ranking — the 4s and 5s get split up, never stacked on one side.</p>
+  <div class="setrow" style="margin-top:6px" id="privRow">
+    <label class="toggle"><input type="checkbox" id="privChk" checked> Keep rankings private</label>
+  </div>
+  <p class="hint" id="privHint"></p>
+</section>
+
+<section id="lineupSection" hidden>
+  <div class="label"><span>This week's sides</span></div>
+  <div id="lineup"></div>
+  <div class="fitrow">
+    <a class="ghost wa" id="waBtn" href="#" target="_blank" rel="noopener">Send to WhatsApp</a>
+    <button class="ghost" id="copyBtn">Copy the teams</button>
+  </div>
+  <textarea id="shareText" readonly hidden aria-label="This week's teams as text"></textarea>
+  <div class="fitrow">
+    <button class="ghost" id="imgBtn">Make a picture</button>
+  </div>
+  <div id="imgWrap" hidden>
+    <canvas id="shot"></canvas>
+    <p class="hint" id="imgHint"></p>
+  </div>
+</section>
+
+<section id="benchSection" hidden>
+  <div class="label"><span>Not coming</span><span>Weeks waiting</span></div>
+  <div class="bench" id="bench"></div>
+</section>
+
+<button class="pick" id="pickBtn">Pick this week's sides</button>
+<p class="note" id="note" hidden></p>
+<div class="foot">
+  <button class="ghost" id="undoBtn">Undo last pick</button>
+  <button class="ghost" id="resetBtn">Start a new season</button>
+</div>
+
+</div>
+<script>
+const KEY  = 'volleyball-picker-v2';
+const OLD  = 'volleyball-picker-v1';
+/* The starter roster for a blank copy: names only. Ratings are never written
+   into this page. They live only on the organizer's own phone. */
+const SEED = `
+Aakash ( Mansfield)
+Aakash Jamai
+Amrat
+Anil
+Anil (south lake )
+Bunty
+Chandu
+Dilan
+Dippy
+Dilip
+Harish
+Karan
+Kartik
+Kiritbhai
+KP
+Lalu
+Mahesh
+Nanukaka
+Neel
+Nilesh
+Rameshkaka
+Ripal
+Rohit
+Santosh
+Sunny
+Tarang
+Tejas
+Vimal
+Viran
+`;
+const LET  = ['A','B','C','D','E','F'];
+
+let justRanked = null;
+let editing = null;   /* name of the player being renamed */
+let S = { roster:[], week:0, size:6, teams:1, sizes:[6], history:[], results:[], note:'', view:'chips', hideRanks:true, guest:false };
+
+/* ---------- storage: this browser, plus a link anyone can open ---------- */
+function save(){
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+}
+function loadLocal(){
+  for (const k of [KEY, OLD]){
+    try { const v = localStorage.getItem(k); if (v){ S = Object.assign(S, JSON.parse(v)); return true; } } catch(e){}
+  }
+  return false;
+}
+
+/* The whole season, small enough to ride in a link. Ratings are left out on
+   purpose: everyone travels as a 3, so nothing private is in the link. */
+const b64 = {
+  out: s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
+  in:  s => decodeURIComponent(escape(atob(s.replace(/-/g,'+').replace(/_/g,'/'))))
+};
+function packState(){
+  return b64.out(JSON.stringify({
+    r: S.roster.map(p => [p.name, 3, p.games, p.sits || 0, p.available ? 1 : 0, p.lastWeek, p.wins || 0, p.losses || 0]),
+    w: S.week, t: S.teams, a: S.auto ? 1 : 0,
+    h: S.history.slice(-1).map(x => ({ week:x.week, sides:x.sides, picked:x.picked, sizes:x.sizes,
+                                       first:x.first, waiting:x.waiting, caps:x.caps || [], prev:{}, prevSits:{} }))
+  }));
+}
+function unpackState(code){
+  const p = JSON.parse(b64.in(code));
+  if (!Array.isArray(p.r) || !p.r.length) return false;
+  S.roster = p.r.map(a => ({ name:a[0], rank:a[1], games:a[2], sits:a[3], available:!!a[4], lastWeek:a[5], wins:a[6]||0, losses:a[7]||0 }));
+  S.week = p.w || 0; S.teams = p.t || 1; S.auto = p.a !== 0; S.history = p.h || [];
+  S.guest = true; S.hideRanks = true;
+  return true;
+}
+
+/* ---------- helpers ---------- */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clamp = (n,a,b) => Math.max(a, Math.min(b, n));
+const totalSpots = () => S.sizes.reduce((a,b) => a+b, 0);
+function evenSizes(){
+  const avail = S.roster.filter(p => p.available).length, n = clamp(S.teams|0 || 1, 1, 6);
+  const base = Math.floor(avail / n), rem = avail % n;
+  return Array.from({length:n}, (_, t) => base + (t < rem ? 1 : 0));
+}
+const availPlayers = () => S.roster.filter(p => p.available);
+/* Sides of about six: 15 -> three of 5, 19 -> three of 6 with one spare, 24 -> four of 6. */
+function autoTeams(n){
+  if (n < 4) return 1;
+  return clamp(Math.max(2, Math.round(n / 6)), 1, 6);
+}
+
+function tidy(){
+  if (typeof S.auto !== 'boolean') S.auto = true;
+  if (S.auto) S.teams = autoTeams(S.roster.filter(p => p.available).length);
+  S.teams = clamp(S.teams|0 || 1, 1, 6);
+  S.size  = clamp(S.size|0 || 6, 2, 12);
+  S.sizes = evenSizes();                              // everyone plays, sides as equal as they go
+  if (typeof S.hideRanks !== 'boolean') S.hideRanks = true;
+  if (!Array.isArray(S.results)) S.results = [];
+  if (!Array.isArray(S.apart)) S.apart = [['Mahesh', 'Lalu', 'Harish']];
+  if (!Array.isArray(S.together)) S.together = [];
+  if (!S.cloud || typeof S.cloud !== 'object') S.cloud = { url:'', key:'', page:'', sheet:'', week:'' };
+  S.apart = S.apart.filter(g => Array.isArray(g) && g.length > 1);
+  S.together = S.together.filter(g => Array.isArray(g) && g.length > 1);
+  S.roster.forEach(p => {
+    if (typeof p.rank !== 'number') p.rank = 3;
+    p.rank = clamp(Math.round(p.rank * 2) / 2, 1, 5);
+    if (typeof p.games !== 'number') p.games = 0;
+    if (typeof p.sits !== 'number') p.sits = 0;
+    if (typeof p.wins !== 'number') p.wins = 0;
+    if (typeof p.losses !== 'number') p.losses = 0;
+    if (p.available === undefined) p.available = true;
+    if (p.lastWeek === undefined) p.lastWeek = null;
+  });
+}
+
+function addNames(raw){
+  const parts = String(raw).split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+  let added = 0;
+  parts.forEach(n => {
+    if (S.roster.some(p => p.name.toLowerCase() === n.toLowerCase())) return;
+    S.roster.push({ name:n, lastWeek:null, games:0, available:true, rank:3 });
+    added++;
+  });
+  return added;
+}
+
+/* ---------- picking ---------- */
+function shuffle(a){
+  for (let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* Spreads the ranking across the sides: strongest first in snake order, with the
+   first pick moving round each week and ties shuffled, then a few swaps to close
+   any gap left by uneven side sizes. Equal rankings come out purely random. */
+function dealEven(chosen, sizes, week){
+  const n = sizes.length;
+  const sides = sizes.map(() => []);
+  const order = shuffle(chosen.slice()).sort((a,b) => b.rank - a.rank);
+
+  const first = n ? week % n : 0;                     // team A isn't always first pick
+  const seq = [];
+  const rounds = Math.max(...sizes);
+  for (let r = 0; r < rounds; r++){
+    const row = sizes.map((_, i) => (i + first) % n);
+    if (r % 2) row.reverse();
+    seq.push(...row);
+  }
+  let s = 0;
+  for (const p of order){
+    while (s < seq.length && sides[seq[s]].length >= sizes[seq[s]]) s++;
+    if (s >= seq.length) break;
+    sides[seq[s]].push(p); s++;
+  }
+
+  // Two things matter: the sides should average out, and the strong players
+  // should be spread around rather than clumped. Swap until neither improves.
+  const avg   = side => side.reduce((a,p) => a + p.rank, 0) / (side.length || 1);
+  const top   = side => side.filter(p => p.rank >= 4).length / (side.length || 1);
+  const power = side => side.reduce((a,p) => a + Math.max(0, p.rank - 3), 0) / (side.length || 1);
+  const gap   = list => Math.max(...list) - Math.min(...list);
+  // players who must not end up together (only possible with three sides or more)
+  const groups = n > 2 ? (S.apart || []).map(g => g.map(x => String(x).toLowerCase())) : [];
+  const clash = () => groups.reduce((a, g) => a + sides.reduce((b, side) => {
+    const c = side.filter(p => g.includes(p.name.toLowerCase())).length;
+    return b + Math.max(0, c - 1);
+  }, 0), 0);
+  // players who want the same side: count how many sides they are scattered over
+  const pairs = (S.together || []).map(g => g.map(x => String(x).toLowerCase()));
+  const split = () => pairs.reduce((a, g) => {
+    const hit = sides.filter(side => side.some(p => g.includes(p.name.toLowerCase()))).length;
+    return a + Math.max(0, hit - 1);
+  }, 0);
+  const cost = () => gap(sides.map(avg)) + gap(sides.map(power)) + 0.8 * gap(sides.map(top))
+                     + 5 * clash() + 4 * split();
+
+  for (let pass = 0; pass < 60 && n > 1; pass++){
+    const before = cost();
+    let best = null;
+    for (let x = 0; x < n; x++){
+      for (let y = x + 1; y < n; y++){
+        for (let i = 0; i < sides[x].length; i++){
+          for (let j = 0; j < sides[y].length; j++){
+            [sides[x][i], sides[y][j]] = [sides[y][j], sides[x][i]];
+            const after = cost();
+            if (after < before - 1e-9 && (!best || after < best.v)) best = { x, y, i, j, v: after };
+            [sides[x][i], sides[y][j]] = [sides[y][j], sides[x][i]];
+          }
+        }
+      }
+    }
+    if (!best) break;
+    const { x, y, i, j } = best;
+    [sides[x][i], sides[y][j]] = [sides[y][j], sides[x][i]];
+  }
+
+  return sides.map(shuffle);                          // court positions stay random
+}
+
+function bestCap(names){
+  const ps = names.map(n => S.roster.find(x => x.name === n)).filter(Boolean);
+  if (!ps.length) return names[0] || '';
+  return ps.slice().sort((a,b) => b.rank - a.rank || (b.games||0) - (a.games||0))[0].name;
+}
+function fixCaps(h){
+  if (!h || !Array.isArray(h.sides)) return;
+  h.caps = h.sides.map((side, t) => {
+    const cur = (h.caps || [])[t];
+    return cur && side.includes(cur) ? cur : bestCap(side);
+  });
+}
+function setCaptain(t, name){
+  const h = S.history[S.history.length - 1];
+  if (!h || !h.sides || !h.sides[t] || !h.sides[t].includes(name)) return;
+  h.caps = h.caps || [];
+  h.caps[t] = name;
+  render(); save();
+}
+
+/* ---------- moving players between the sides by hand ---------- */
+function moveOrSwap(fromT, fromName, toT, toName){
+  const h = S.history[S.history.length - 1];
+  if (!h || !Array.isArray(h.sides)) return;
+  const a = h.sides[fromT], b = h.sides[toT];
+  if (!a || !b) return;
+  const i = a.indexOf(fromName); if (i < 0) return;
+  if (toName && toName !== fromName){
+    const j = b.indexOf(toName); if (j < 0) return;
+    a[i] = toName; b[j] = fromName;
+  } else {
+    if (fromT === toT) return;
+    a.splice(i, 1); b.push(fromName);
+  }
+  h.sizes = h.sides.map(x => x.length);
+  // a player dragged off a waiting side onto one that is playing should not keep that sit
+  if (h.sides.length > 2){
+    fixSession(h);
+    const waitingNow = t => !h.playing.includes(t);
+    if (waitingNow(fromT) !== waitingNow(toT)){
+      const mover = S.roster.find(z => z.name === fromName);
+      if (mover) mover.sits = Math.max(0, (mover.sits || 0) + (waitingNow(toT) ? 1 : -1));
+      if (toName && toName !== fromName){
+        const other = S.roster.find(z => z.name === toName);
+        if (other) other.sits = Math.max(0, (other.sits || 0) + (waitingNow(fromT) ? 1 : -1));
+      }
+    }
+  }
+  fixCaps(h);
+  render(); save();
+}
+
+function pickTeam(){
+  const pool  = availPlayers();
+  const spots = totalSpots();
+  if (S.sizes.some(n => n < 2)){
+    S.note = `${pool.length} players can't make ${S.teams} sides. Bring someone back in, add players, or use fewer sides.`;
+    render(); save(); return;
+  }
+  const week = S.week + 1;
+  const rest = p => p.lastWeek === null ? 9999 : week - p.lastWeek;
+
+  // longest rested first, ties broken at random
+  const ranked = pool.map(p => ({ p, r: rest(p), t: Math.random() }))
+                     .sort((a,b) => b.r - a.r || b.t - a.t);
+  const chosen = ranked.slice(0, spots).map(x => x.p);
+
+  // deal into sides: snake by ranking, then swap until the averages line up,
+  // so the strong players never stack on one side
+  const sides = dealEven(chosen, S.sizes, week);
+
+  // which two sides start, and who waits — the side that has waited least goes next
+  let first = sides.map((_, i) => i), waiting = [];
+  if (sides.length > 2){
+    // the side whose players have waited most always plays; its opponent is drawn at
+    // random, a side that has waited more being likelier — so it isn't always A vs B
+    const load = sides.map((s, i) => ({ i, w: s.reduce((a,p) => a + (p.sits || 0), 0) / (s.length || 1) }));
+    load.sort((a,b) => b.w - a.w || Math.random() - 0.5);
+    const play = [load[0].i], rest2 = load.slice(1);
+    const wt = x => (x.w + 1) * (x.w + 1);
+    const tot = rest2.reduce((a,x) => a + wt(x), 0);
+    let r = Math.random() * tot, k = 0;
+    while (k < rest2.length - 1 && (r -= wt(rest2[k])) > 0) k++;
+    play.push(rest2[k].i);
+    first   = shuffle(play.slice());                 // C vs A as readily as A vs C
+    waiting = sides.map((_, i) => i).filter(i => !first.includes(i)).sort((a,b) => a - b);
+    waiting.forEach(i => sides[i].forEach(p => p.sits = (p.sits || 0) + 1));
+  }
+
+  const prev = {}, prevSits = {};
+  chosen.forEach(p => { prev[p.name] = p.lastWeek; prevSits[p.name] = p.sits; });
+  waiting.forEach(i => sides[i].forEach(p => prevSits[p.name] = p.sits - 1));
+  S.history.push({
+    week,
+    sides: sides.map(s => s.map(p => p.name)),
+    caps: sides.map(s => bestCap(s.map(p => p.name))),
+    picked: chosen.map(p => p.name),
+    sizes: S.sizes.slice(),
+    first, waiting,
+    prev, prevSits
+  });
+  chosen.forEach(p => { p.lastWeek = week; p.games++; });
+  S.week = week;
+
+  S.note = '';
+  render(); save();
+}
+
+function undo(){
+  const h = S.history.pop();
+  if (!h) return;
+  (h.picked || []).forEach(n => {
+    const p = S.roster.find(x => x.name === n);
+    if (p){
+      p.lastWeek = h.prev ? h.prev[n] : null;
+      p.games = Math.max(0, p.games - 1);
+      if (h.prevSits && h.prevSits[n] !== undefined) p.sits = h.prevSits[n];
+    }
+  });
+  S.week = Math.max(0, h.week - 1);
+  S.note = '';
+  render(); save();
+}
+
+/* ---------- rendering ---------- */
+const fmtRank = r => (Math.round(r * 2) / 2).toFixed(1).replace(/\.0$/, '');
+const pips = r => { const f = Math.floor(r); return '\u25CF'.repeat(f) + (r > f ? '\u25D0' : ''); };
+const dots = r => { const f = Math.floor(r), h = r > f ? 1 : 0;
+  return '\u25CF'.repeat(f) + (h ? '\u25D0' : '') + '\u25CB'.repeat(Math.max(0, 5 - f - h)); };
+const showRanks = () => !S.guest && S.organizer === true && !S.hideRanks;
+
+function rosterHTML(){
+  if (!S.roster.length) return '<p class="empty">No players yet. Add a few names below to get started.</p>';
+
+  if (S.view === 'ranks'){
+    const rows = S.roster.map(p => `
+      <div class="rrow${p.available ? '' : ' out'}${p.name === justRanked ? ' hit' : ''}">
+        <button class="av${p.available ? ' in' : ''}" data-act="toggle" data-name="${esc(p.name)}" aria-pressed="${p.available}">${p.available ? 'Playing' : 'Not coming'}</button>
+        ${editing === p.name
+          ? `<input class="rname" id="renameBox" value="${esc(p.name)}" autocomplete="off" autocapitalize="words" spellcheck="false" aria-label="New name for ${esc(p.name)}">`
+          : `<span class="rname" data-act="rename" data-name="${esc(p.name)}" title="Tap to rename">${esc(p.name)}</span>`}
+        <div class="stars" role="group" aria-label="Ranking for ${esc(p.name)}">
+          ${[1,2,3,4,5].map(i => `<button class="${i <= p.rank ? 'on' : (p.rank === i - 0.5 ? 'half' : '')}" data-act="rank" data-name="${esc(p.name)}" data-r="${i}" title="Tap the left half for ${i - 0.5}, the right half for ${i}" aria-label="Rank ${esc(p.name)} ${i} of 5 — tap the left half for ${i - 0.5}"></button>`).join('')}
+        </div>
+        <span class="g"><b>${fmtRank(p.rank)}</b>/5 · ${p.games}g</span>
+        <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
+      </div>`).join('');
+    return rows + `<div class="fitrow">
+        <button class="ghost" data-act="sortrank">Sort by ranking</button>
+        <button class="ghost" data-act="sortaz">Sort A to Z</button>
+      </div>`;
+  }
+
+  return '<div class="chips">' + S.roster.map(p => `
+    <div class="chip${p.available ? '' : ' out'}" data-act="toggle" data-name="${esc(p.name)}" tabindex="0" role="button" aria-pressed="${!p.available}">
+      <span>${esc(p.name)}</span>
+      ${showRanks() ? `<span class="dots" title="Ranking ${fmtRank(p.rank)} of 5">${dots(p.rank)}</span>` : ''}
+      <span class="meta">${p.games}</span>
+      <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
+    </div>`).join('') + '</div>';
+}
+
+function courtHTML(names, t, sizes, tag, cap, onNow){
+  const ps = names.map(n => S.roster.find(p => p.name === n) || { name:n, rank:3 });
+  const avg = ps.length ? (ps.reduce((a,p) => a + p.rank, 0) / ps.length).toFixed(1) : '0';
+  let cells = '';
+
+  if (ps.length === 6){
+    const order = [4,3,2,5,6,1];                       // front row, then back row
+    cells = order.map((pos, i) => {
+      const p = ps[pos - 1];
+      return `<div class="slot${p.name === cap ? ' cap' : ''}" style="--i:${i}" data-side="${t}" data-name="${esc(p.name)}">
+                <span class="pos">${pos}</span>
+                <span class="who">${esc(p.name)}</span>
+                ${p.name === cap ? '<span class="capb" title="Captain">C</span>' : ''}
+              </div>`;
+    }).join('');
+  } else {
+    cells = ps.map((p, i) => `
+      <div class="slot${p.name === cap ? ' cap' : ''}" style="--i:${i}" data-side="${t}" data-name="${esc(p.name)}">
+        <span class="pos">${i + 1}</span>
+        <span class="who">${esc(p.name)}</span>
+        ${p.name === cap ? '<span class="capb" title="Captain">C</span>' : ''}
+      </div>`).join('');
+  }
+
+  return `<div class="court" data-side="${t}">
+    <div class="chead">
+      <h3>Team ${LET[t] || t + 1}${tag ? `<i class="tag ${tag === 'waits' ? 'wait' : 'go'}">${tag === 'waits' ? 'waits' : (onNow ? 'on court' : 'plays first')}</i>` : ''}</h3>
+      <span>${cap ? `C: ${esc(cap)} · ` : ''}${ps.length} players${showRanks() ? ` · avg rank ${avg}` : ''}</span>
+    </div>
+    <div class="grid">${cells}</div>
+  </div>`;
+}
+
+/* Who is on court right now, as the session goes on. The first game and the
+   original waiting list stay untouched, so the message you already sent still reads true. */
+function fixSession(h){
+  if (!h || !Array.isArray(h.sides)) return;
+  const n = h.sides.length;
+  if (!Array.isArray(h.playing) || h.playing.length !== 2 || h.playing.some(i => i >= n)){
+    h.playing = (h.first || [0, 1]).slice(0, 2);
+    h.queue   = (h.waiting || []).slice();
+    h.log     = [];
+  }
+  if (!Array.isArray(h.queue)) h.queue = [];
+  if (!Array.isArray(h.log))   h.log = [];
+}
+function sitAll(h, t, by){
+  (h.sides[t] || []).forEach(nm => {
+    const p = S.roster.find(x => x.name === nm);
+    if (p) p.sits = Math.max(0, (p.sits || 0) + by);
+  });
+}
+function gameWon(winner){
+  const h = S.history[S.history.length - 1]; if (!h) return;
+  fixSession(h);
+  const at = h.playing.indexOf(winner); if (at < 0 || !h.queue.length) return;
+  const loser = h.playing[1 - at];
+  const next  = h.queue.shift();
+  h.queue.push(loser);
+  h.playing = [winner, next];
+  sitAll(h, loser, 1);                 // the side coming off starts waiting
+  h.log.push([winner, loser, next]);
+  render(); save();
+}
+function undoGame(){
+  const h = S.history[S.history.length - 1];
+  if (!h || !Array.isArray(h.log) || !h.log.length) return;
+  const [winner, loser, next] = h.log.pop();
+  h.queue = h.queue.filter(x => x !== loser);
+  h.queue.unshift(next);
+  h.playing = [winner, loser];
+  sitAll(h, loser, -1);
+  render(); save();
+}
+
+function firstGameHTML(last){
+  const sides = last.sides || [last.picked];
+  if (sides.length < 3) return '';
+  const names = (last.first || []).map(i => `Team ${LET[i]}`).join(' vs ');
+  const wait  = (last.waiting || []).map(i => `Team ${LET[i]}`).join(', ');
+  const past  = S.history.slice(-6, -1).filter(x => (x.waiting || []).length)
+    .map(x => x.waiting.map(i => LET[i]).join('+')).join(' \u00b7 ');
+  fixSession(last);
+  const started = last.log.length > 0;
+  const [x, y] = last.playing;
+  const upNext = last.queue.map(i => `Team ${LET[i]}`).join(', then ');
+  return `
+  <div class="next">
+    <p class="nhead">${started ? `On court now · game ${last.log.length + 1}` : 'First game'}
+      ${started ? `<b class="linkish" id="undoGameBtn">undo last</b>` : ''}</p>
+    <div class="vs">
+      <button class="won" data-won="${x}">Team ${LET[x]} won</button>
+      <span class="v">vs</span>
+      <button class="won" data-won="${y}">Team ${LET[y]} won</button>
+    </div>
+    ${upNext ? `<p class="upnext">Up next: ${upNext}</p>` : ''}
+    <p class="hint">Tap whoever won. They stay on, the other side goes to the back of the line, and the next side comes on.
+      ${!started && past ? `<span class="past">waited before: ${past}</span>` : ''}</p>
+  </div>`;
+}
+
+function lastSides(){
+  const last = S.history[S.history.length - 1];
+  return last ? (last.sides || [last.picked]) : null;
+}
+
+function render(){
+  tidy();
+  document.getElementById('rosterCount').textContent =
+    S.roster.length ? `${availPlayers().length} of ${S.roster.length} in` : '';
+  document.getElementById('rosterBody').innerHTML = rosterHTML();
+  document.getElementById('rosterHint').textContent = !S.roster.length ? '' :
+    (S.view === 'ranks'
+      ? 'Tap the dots to rank each player from 1 to 5 — everyone starts at 3. The left half of a dot gives the half step, so the left of the 5th dot is 4.5. Tap a name to change its spelling. Playing / Not coming decides who gets picked this week; × removes them for good.'
+      : 'Tap a name to mark them not coming this week, tap again to bring them back. Tap × to remove them for good. Add players below.');
+  document.querySelectorAll('#viewSeg button').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
+
+  document.getElementById('teamVal').textContent = S.teams;
+  document.getElementById('teamMinus').disabled = S.auto || S.teams <= 1;
+  document.getElementById('teamPlus').disabled  = S.auto || S.teams >= 6;
+  document.getElementById('autoChk').checked = !!S.auto;
+  document.getElementById('teamLabel').textContent = S.auto ? 'Teams (worked out)' : 'How many teams';
+
+  const st = document.getElementById('status');
+  if (S.guest){
+    st.hidden = false; st.className = 'status plain';
+    st.innerHTML = 'This roster came in on a link, so it is set up as a stand-in copy: ratings and the sign-up sheet are hidden. ' +
+      '<b class="linkish" id="ownIt">This is my own copy</b>';
+  } else st.hidden = true;
+
+  const org = !S.guest && S.organizer === true;
+  if (!org && S.view === 'ranks') S.view = 'chips';
+  document.getElementById('viewSeg').hidden = !org;
+  document.getElementById('privRow').hidden = !org;
+  document.getElementById('expBtn').hidden = !org;
+  document.getElementById('sheetSection').hidden = S.guest;
+  if (!S.guest) renderGuests();
+  document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
+  document.getElementById('sheetSetupBtn').hidden = inDemo();
+  if (inDemo()) document.getElementById('sheetSetup').hidden = true;
+  document.getElementById('sheetHint').textContent = inDemo()
+    ? 'Practice mode: the sheet is pretend and lives only in this browser, so you can walk the whole thing through before setting up anything real. The link only works on this device.'
+    : cloudOK()
+    ? (S.cloud.sheet
+        ? 'Send the link to the group once a week. Everyone taps their own name, and the answers drop in here on their own. Anyone not on the roster can add themselves, and they show up above for you to accept.'
+        : 'Press "Open this week\'s sheet", then copy the link into the group chat. Everyone starts as not coming until they tap Coming.')
+    : 'Not set up yet. Press "Sheet settings" and paste in the Supabase project URL and anon key.';
+  document.getElementById('dlBtn').hidden = !org;
+  const pc = document.getElementById('privChk');
+  pc.checked = !!S.hideRanks;
+  document.getElementById('privHint').textContent = S.guest ? '' : S.hideRanks
+    ? 'Ratings show only on the Rankings tab, and team averages are hidden as well. Safe to screenshot.'
+    : 'Team averages are on show above each side, and ratings appear on the chips. Player ratings never appear on the courts or in anything you send.';
+
+  const avail = availPlayers().length;
+  const sp = document.getElementById('spots');
+  const small = S.sizes.some(n => n < 2);
+  sp.textContent = small
+    ? `${avail} playing — not enough for ${S.teams} sides`
+    : `${avail} playing · ${S.teams} ${S.teams === 1 ? 'side' : 'sides'} of ${S.sizes.join(', ')}`;
+  sp.classList.toggle('warn', small);
+
+  const last = S.history[S.history.length - 1];
+  const ls = document.getElementById('lineupSection');
+  if (last){
+    ls.hidden = false;
+    const sides = last.sides || [last.picked];
+    if (sides.length > 2) fixSession(last);
+    const live  = sides.length > 2 ? last.playing : [];
+    const tagOf = t => sides.length < 3 ? '' : (live.includes(t) ? 'plays' : 'waits');
+    fixCaps(last);
+    document.getElementById('lineup').innerHTML =
+      sides.map((s, t) => courtHTML(s, t, last.sizes, tagOf(t), (last.caps || [])[t], last.log && last.log.length > 0)).join('')
+      + firstGameHTML(last)
+      + `<p class="hint">Hold a player and drag them onto another team to move them, or straight onto another player to swap the two. Tap a player to make them captain.</p>`;
+  } else ls.hidden = true;
+
+  const benchNames = last ? S.roster.filter(p => !(last.picked || []).includes(p.name)) : [];
+  const bs = document.getElementById('benchSection');
+  if (last && benchNames.length){
+    bs.hidden = false;
+    document.getElementById('bench').innerHTML = benchNames.map(p => {
+      const w = p.lastWeek === null ? 'not played yet' : `${S.week - p.lastWeek} wk`;
+      return `<div class="brow"><span class="bn">${esc(p.name)}${p.available ? '' : ' <span class="bw">(out)</span>'}</span><span class="bw">${w}</span></div>`;
+    }).join('');
+  } else bs.hidden = true;
+
+
+  const box = document.getElementById('renameBox');
+  if (box && document.activeElement !== box){ box.focus(); box.select(); }
+
+  renderRules();
+  const note = document.getElementById('note');
+  note.hidden = !S.note;
+  note.textContent = S.note;
+}
+
+/* ---------- renaming ---------- */
+function renameEverywhere(old, next){
+  const p = S.roster.find(x => x.name === old); if (p) p.name = next;
+  const sw = n => n === old ? next : n;
+  (S.history || []).forEach(h => {
+    if (Array.isArray(h.sides))  h.sides  = h.sides.map(side => side.map(sw));
+    if (Array.isArray(h.picked)) h.picked = h.picked.map(sw);
+    if (Array.isArray(h.caps))   h.caps   = h.caps.map(sw);
+    ['prev','prevSits'].forEach(k => {
+      if (h[k] && Object.prototype.hasOwnProperty.call(h[k], old)){ h[k][next] = h[k][old]; delete h[k][old]; }
+    });
+  });
+  (S.apart || []).forEach((g, k) => { S.apart[k] = g.map(sw); });
+  (S.together || []).forEach((g, k) => { S.together[k] = g.map(sw); });
+  (S.results || []).forEach(g => {
+    if (Array.isArray(g.win))  g.win  = g.win.map(sw);
+    if (Array.isArray(g.lose)) g.lose = g.lose.map(sw);
+  });
+}
+
+function commitRename(raw){
+  const old = editing; if (old === null) return;
+  editing = null;
+  const next = String(raw || '').trim().replace(/\s+/g, ' ');
+  const p = S.roster.find(x => x.name === old);
+  if (!p || !next || next === old){ render(); return; }
+  if (S.roster.some(x => x !== p && x.name.toLowerCase() === next.toLowerCase())){
+    S.note = `There is already a player called ${next}, so ${old} was left as is.`;
+    render(); return;
+  }
+  renameEverywhere(old, next);
+  if (justRanked === old) justRanked = next;
+  if (S.note.startsWith('There is already')) S.note = '';
+  render(); save();
+}
+
+/* ---------- asking before something irreversible ----------
+   A published page can be sandboxed so the browser's own confirm box never
+   appears and silently answers no, which quietly broke every one of these. */
+function ask(text, onYes){
+  const old = document.getElementById('askWrap');
+  if (old) old.remove();
+  const w = document.createElement('div');
+  w.id = 'askWrap';
+  w.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
+      <p>${esc(text)}</p>
+      <div class="fitrow">
+        <button class="ghost" data-a="no">Cancel</button>
+        <button class="ghost yes" data-a="yes">Yes</button>
+      </div>
+    </div>`;
+  document.body.appendChild(w);
+  const close = ok => { w.remove(); if (ok) onYes(); };
+  w.addEventListener('click', e => {
+    const b = e.target.closest('[data-a]');
+    if (b) return close(b.dataset.a === 'yes');
+    if (e.target === w) close(false);
+  });
+  document.addEventListener('keydown', function esc2(e){
+    if (!document.getElementById('askWrap')) { document.removeEventListener('keydown', esc2); return; }
+    if (e.key === 'Escape'){ close(false); document.removeEventListener('keydown', esc2); }
+  });
+  const y = w.querySelector('[data-a="yes"]'); if (y) y.focus();
+}
+
+/* ---------- events ---------- */
+document.getElementById('rosterBody').addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act;
+  if (act === 'sortrank' || act === 'sortaz'){
+    S.roster.sort(act === 'sortaz'
+      ? (a,b) => a.name.localeCompare(b.name)
+      : (a,b) => b.rank - a.rank || a.name.localeCompare(b.name));
+    justRanked = null; render(); save(); return;
+  }
+  const p = S.roster.find(x => x.name === el.dataset.name); if (!p) return;
+  if (act === 'remove'){
+    e.stopPropagation();
+    ask(`Remove ${p.name} from the roster? Their games and rating go too.`, () => {
+      S.roster = S.roster.filter(x => x !== p); justRanked = null;
+      render(); save();
+    });
+    return;
+  }
+  else if (act === 'rank'){
+    const r = +el.dataset.r, b = el.getBoundingClientRect();
+    const tappedLeft = e.detail > 0 && b.width && (e.clientX - b.left) < b.width / 2;
+    p.rank = clamp(tappedLeft ? r - 0.5 : r, 1, 5);
+    justRanked = p.name;
+  }
+  else if (act === 'rename'){ editing = p.name; justRanked = null; render(); return; }
+  else if (act === 'toggle'){ p.available = !p.available; }
+  render(); save();
+});
+document.getElementById('rosterBody').addEventListener('keydown', e => {
+  if (e.target.id === 'renameBox'){
+    if (e.key === 'Enter'){ e.preventDefault(); commitRename(e.target.value); }
+    else if (e.key === 'Escape'){ e.preventDefault(); editing = null; render(); }
+    return;
+  }
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const chip = e.target.closest('.chip'); if (!chip) return;
+  e.preventDefault(); chip.click();
+});
+
+document.getElementById('rosterBody').addEventListener('focusout', e => {
+  if (e.target.id === 'renameBox') commitRename(e.target.value);
+});
+
+document.getElementById('viewSeg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.view = b.dataset.view; justRanked = null; render(); save();
+});
+
+document.getElementById('teamMinus').onclick = () => { S.auto = false; S.teams = clamp(S.teams - 1, 1, 6); render(); save(); };
+document.getElementById('teamPlus').onclick  = () => { S.auto = false; S.teams = clamp(S.teams + 1, 1, 6); render(); save(); };
+document.getElementById('autoChk').onchange = e => { S.auto = e.target.checked; render(); save(); };
+
+
+document.getElementById('addBtn').onclick = () => {
+  const i = document.getElementById('nameInput');
+  if (addNames(i.value)) { i.value = ''; render(); save(); } else i.value = '';
+};
+document.getElementById('nameInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('addBtn').click();
+});
+document.getElementById('bulkBtn').onclick = () => {
+  const t = document.getElementById('bulkInput');
+  addNames(t.value); t.value = ''; render(); save();
+};
+document.getElementById('switchMode').onclick = () => {
+  const s = document.getElementById('singleAdd'), b = document.getElementById('bulkAdd'),
+        btn = document.getElementById('switchMode');
+  const bulk = b.hidden;
+  b.hidden = !bulk; s.hidden = bulk;
+  btn.textContent = bulk ? 'Add one at a time' : 'Add several at once';
+};
+
+/* ---------- sharing ---------- */
+function inviteLink(){
+  return location.origin + location.pathname + location.search + '#s=' + packState();
+}
+
+function shareText(){
+  const h = S.history[S.history.length - 1];
+  if (!h) return '';
+  const sides = h.sides || [h.picked];
+  let out = `Volleyball teams\n`;
+  sides.forEach((s, t) => {
+    out += `\n*Team ${LET[t] || t + 1}*\n`;
+    const cap = (h.caps || [])[t];
+    s.forEach((n, i) => { out += `${i + 1}. ${n}${n === cap ? ' (C)' : ''}\n`; });
+  });
+  if (sides.length > 2 && h.first){
+    out += `\nFirst game: ${h.first.map(i => 'Team ' + LET[i]).join(' vs ')}`;
+    if ((h.waiting || []).length) out += ` — ${h.waiting.map(i => 'Team ' + LET[i]).join(', ')} waits\n`;
+  }
+  return out;                                     // rankings never go in the message
+}
+
+document.getElementById('waBtn').onclick = e => {
+  const t = shareText();
+  if (!t){ e.preventDefault(); return; }
+  e.currentTarget.href = 'https://wa.me/?text=' + encodeURIComponent(t);
+};
+document.getElementById('copyBtn').onclick = async e => {
+  const t = shareText(), btn = e.currentTarget, box = document.getElementById('shareText');
+  box.value = t;
+  try {
+    await navigator.clipboard.writeText(t);
+    btn.textContent = 'Copied';
+    setTimeout(() => btn.textContent = 'Copy the teams', 1600);
+  } catch(err){
+    box.hidden = false; box.focus(); box.select();
+    btn.textContent = 'Copy it from the box';
+  }
+};
+
+document.getElementById('privChk').onchange = e => { S.hideRanks = e.target.checked; render(); save(); };
+
+/* ---------- the week's sides as a picture ---------- */
+function roundRect(c, x, y, w, hgt, r){
+  c.beginPath();
+  c.moveTo(x+r, y); c.arcTo(x+w, y, x+w, y+hgt, r); c.arcTo(x+w, y+hgt, x, y+hgt, r);
+  c.arcTo(x, y+hgt, x, y, r); c.arcTo(x, y, x+w, y, r); c.closePath();
+}
+
+function drawTeams(cv){
+  const last = S.history[S.history.length - 1]; if (!last) return false;
+  const sides = last.sides || [last.picked];
+  const wait  = last.waiting || [];
+  const n = sides.length, maxP = Math.max(...sides.map(s => s.length));
+  const cols = n <= 2 ? n : 2, rows = Math.ceil(n / cols);
+  const pad = 36, gap = 16, colW = 320, head = 128, rowH = 46, cardHead = 56;
+  const cardH = cardHead + maxP * rowH + 8;
+  const today = S.results.filter(g => g.week === last.week);
+  const foot = today.length ? 34 + today.length * 26 : 26;
+  const W = pad * 2 + cols * colW + (cols - 1) * gap;
+  const H = head + rows * cardH + (rows - 1) * gap + foot;
+  const dpr = 2;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  c.fillStyle = '#081525'; c.fillRect(0, 0, W, H);
+  c.fillStyle = '#F2C230';
+  c.font = '700 40px Archivo, Arial, sans-serif';
+  c.textBaseline = 'alphabetic';
+  c.fillText('VOLLEYBALL', pad, 62);
+  c.fillStyle = '#7C8CA3';
+  c.font = '400 20px Archivo, Arial, sans-serif';
+  let sub = `${sides.reduce((a,s) => a + s.length, 0)} players · ${n} sides`;
+  if (n > 2 && last.first) sub = `Team ${last.first.map(i => LET[i]).join(' vs Team ')} start` +
+    (wait.length ? ` · Team ${wait.map(i => LET[i]).join(', ')} waits` : '');
+  c.fillText(sub, pad, 96);
+
+  sides.forEach((s, t) => {
+    const cx = t % cols, cy = Math.floor(t / cols);
+    const x = pad + cx * (colW + gap), y0 = head + cy * (cardH + gap);
+    c.fillStyle = '#10243F'; roundRect(c, x, y0, colW, cardH, 16); c.fill();
+    c.fillStyle = wait.includes(t) ? '#7C8CA3' : '#F2C230';
+    c.font = '700 26px Archivo, Arial, sans-serif';
+    c.fillText('TEAM ' + LET[t], x + 20, y0 + 38);
+    if (n > 2){
+      const waits = wait.includes(t);
+      const tag = waits ? 'WAITS' : 'PLAYS FIRST';
+      c.font = '500 13px "IBM Plex Mono", monospace';
+      const tw = c.measureText(tag).width, tx = x + colW - 20 - tw;
+      if (waits){
+        c.fillStyle = '#7C8CA3';
+        c.fillText(tag, tx, y0 + 36);
+      } else {
+        roundRect(c, tx - 10, y0 + 20, tw + 20, 24, 12);
+        c.fillStyle = '#F2C230'; c.fill();
+        c.fillStyle = '#0A1A2C'; c.fillText(tag, tx, y0 + 36);
+      }
+    }
+    s.forEach((nm, i) => {
+      const y = y0 + cardHead + i * rowH + 26;
+      c.fillStyle = '#7C8CA3'; c.font = '400 15px "IBM Plex Mono", monospace';
+      c.fillText(String(i + 1), x + 20, y);
+      c.fillStyle = '#E8EDF2'; c.font = '600 22px Archivo, Arial, sans-serif';
+      let name = nm;
+      while (c.measureText(name).width > colW - 100 && name.length > 4) name = name.slice(0, -1);
+      const shown = name + (name === nm ? '' : '…');
+      c.fillText(shown, x + 48, y);
+      if ((last.caps || [])[t] === nm){
+        const cx2 = x + 48 + c.measureText(shown).width + 10;
+        c.fillStyle = '#F2C230'; c.beginPath(); c.arc(cx2 + 9, y - 7, 9, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#0A1A2C'; c.font = '500 11px "IBM Plex Mono", monospace';
+        c.fillText('C', cx2 + 5.5, y - 3);
+      }
+    });
+  });
+
+  if (today.length){
+    let y = head + rows * cardH + (rows - 1) * gap + 22;
+    c.fillStyle = '#7C8CA3'; c.font = '500 14px "IBM Plex Mono", monospace';
+    c.fillText('RESULTS', pad, y);
+    today.forEach(g => { y += 26; c.fillStyle = '#E8EDF2'; c.font = '400 17px Archivo, Arial, sans-serif';
+      c.fillText(`Team ${LET[g.w]} beat Team ${LET[g.l]}`, pad, y); });
+  }
+  return true;
+}
+
+document.getElementById('imgBtn').onclick = async e => {
+  const btn = e.currentTarget, cv = document.getElementById('shot');
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(err){}
+  if (!drawTeams(cv)) return;
+  document.getElementById('imgWrap').hidden = false;
+  const hint = document.getElementById('imgHint');
+  hint.textContent = 'Press and hold the picture to save it or send it straight to WhatsApp.';
+  try {
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    const file = new File([blob], 'volleyball-teams.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })){
+      await navigator.share({ files: [file], title: 'Volleyball teams' });
+      hint.textContent = 'Sent. The picture stays here if you want to send it again.';
+    }
+  } catch(err){}
+  btn.textContent = 'Make a picture';
+};
+
+
+/* ---------- who's coming this week ---------- */
+document.getElementById('allIn').onclick = () => {
+  S.roster.forEach(p => p.available = true);
+  document.getElementById('comingHint').textContent = `All ${S.roster.length} marked as coming.`;
+  render(); save();
+};
+document.getElementById('allOut').onclick = () => {
+  S.roster.forEach(p => p.available = false);
+  document.getElementById('comingHint').textContent = 'Everyone is out — now tap the ones who are coming.';
+  render(); save();
+};
+document.getElementById('pasteBtn').onclick = () => {
+  const box = document.getElementById('pasteBox');
+  box.hidden = !box.hidden;
+  if (!box.hidden) document.getElementById('pasteIn').focus();
+};
+document.getElementById('pasteApply').onclick = () => {
+  const ta = document.getElementById('pasteIn');
+  // Accepts a WhatsApp sign-up list as it is: "1. Vimal", "2) Karan ✅", "- Neel 👍"
+  const wanted = ta.value.split(/[\n,;]+/)
+    .map(x => x.replace(/^\s*(\d+\s*[.):-]?|[-*•>]+)\s*/, '')
+               .replace(/[\u2705\u2714\u2713\u{1F44D}\u{1F3D0}\u{1F3FB}-\u{1F3FF}\uFE0F]/gu, '')
+               .replace(/\s+(in|yes|coming)$/i, '').trim())
+    .filter(x => x && !/^(volleyball|this week|sunday|saturday)\b/i.test(x));
+  if (!wanted.length){ document.getElementById('comingHint').textContent = 'Nothing pasted yet.'; return; }
+  const missed = [];
+  S.roster.forEach(p => p.available = false);
+  wanted.forEach(w => {
+    const p = S.roster.find(x => x.name.toLowerCase() === w.toLowerCase());
+    if (p) p.available = true; else missed.push(w);
+  });
+  const inCount = S.roster.filter(p => p.available).length;
+  ta.value = ''; document.getElementById('pasteBox').hidden = true;
+  document.getElementById('comingHint').textContent =
+    `${inCount} marked as coming, ${S.roster.length - inCount} out.` +
+    (missed.length ? ` Not on the roster: ${missed.join(', ')} — add them if they play.` : '');
+  render(); save();
+};
+
+/* ---------- the sign-up sheet the group fills in ---------- */
+const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const cloudOK = () => !!(S.cloud && S.cloud.url && S.cloud.key);
+const sheetMsg = (t, warn) => {
+  const el = document.getElementById('sheetStatus');
+  el.textContent = t; el.classList.toggle('warn', !!warn);
+};
+
+/* ---------- practice mode ----------
+   A pretend sheet kept in this browser, so the whole flow can be tried before
+   any of it is set up for real. Nothing leaves the device. */
+const DEMO_KEY = 'volleyball-demo-sheet';
+function demoDb(){
+  try { return JSON.parse(localStorage.getItem(DEMO_KEY)) || { sheets:[], signups:[] }; }
+  catch(e){ return { sheets:[], signups:[] }; }
+}
+function demoApi(path, opts){
+  const db = demoDb();
+  const [table, query] = String(path).split('?');
+  const q = new URLSearchParams(query || '');
+  const eq = k => { const v = q.get(k); return v === null ? null : v.replace(/^eq\./, ''); };
+  if (!db[table]) db[table] = [];
+
+  if (opts && opts.method === 'POST'){
+    const keys = table === 'sheets' ? ['sheet'] : ['sheet', 'week', 'name'];
+    JSON.parse(opts.body).forEach(r => {
+      const at = db[table].findIndex(x => keys.every(k => x[k] === r[k]));
+      if (at >= 0) db[table][at] = Object.assign({}, db[table][at], r);
+      else db[table].push(r);
+    });
+    try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){}
+    return null;
+  }
+  let rows = db[table].slice();
+  ['sheet','week','name'].forEach(k => {
+    const v = eq(k);
+    if (v !== null) rows = rows.filter(x => String(x[k]) === v);
+  });
+  return rows;
+}
+const inDemo = () => S.cloud && S.cloud.url === 'demo';
+
+async function sb(path, opts){
+  if (inDemo()) return demoApi(path, opts);
+  const base = S.cloud.url.replace(/\/+$/, '') + '/rest/v1/';
+  const headers = Object.assign(
+    { apikey:S.cloud.key, Authorization:'Bearer ' + S.cloud.key, 'Content-Type':'application/json' },
+    (opts && opts.headers) || {});
+  const r = await fetch(base + path, Object.assign({}, opts, { headers }));
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 140));
+  const t = await r.text();
+  return t ? JSON.parse(t) : null;
+}
+
+function sheetLink(){
+  if (!cloudOK() || !S.cloud.sheet) return '';
+  const page = (S.cloud.page || '').trim() || new URL('rsvp.html', location.href).href;
+  return `${page}?s=${encodeURIComponent(S.cloud.sheet)}&u=${b64url(S.cloud.url)}&k=${b64url(S.cloud.key)}`;
+}
+
+function personalLink(name){
+  const base = sheetLink();
+  return base ? base + '&n=' + b64url(name) : '';
+}
+
+async function sheetNew(){
+  if (!cloudOK()){ document.getElementById('sheetSetup').hidden = false; sheetMsg('Put the project address and key in first.', true); return; }
+  if (!S.roster.length){ sheetMsg('Add some players first.', true); return; }
+  S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+  S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
+  sheetMsg('Opening the sheet…');
+  try {
+    await sb('sheets?on_conflict=sheet', {
+      method:'POST',
+      headers:{ Prefer:'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify([{ sheet:S.cloud.sheet, week:S.cloud.week, names:S.roster.map(p => p.name), updated_at:new Date().toISOString() }])
+    });
+    S.roster.forEach(p => p.available = false);   // everyone out until they say otherwise
+    sheetMsg('Sheet is open for this week. Copy the link and send it to the group.');
+    render(); save();
+  } catch(err){
+    sheetMsg('Could not open the sheet: ' + err.message, true);
+  }
+}
+
+async function sheetPull(quiet){
+  if (!cloudOK() || !S.cloud.sheet){ if (!quiet) sheetMsg('No sheet open yet.', true); return; }
+  try {
+    const rows = await sb(`signups?sheet=eq.${encodeURIComponent(S.cloud.sheet)}&week=eq.${encodeURIComponent(S.cloud.week)}&select=name,coming,watch`);
+    let yes = 0, watch = 0, no = 0;
+    const guests = [];
+    (rows || []).forEach(r => {
+      const playing = r.coming === true && r.watch !== true;
+      const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
+      if (!p){ guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true }); return; }
+      p.available = playing;                       // a watcher is here, but not picked
+      if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
+    });
+    S.cloud.guests = guests;
+    const silent = S.roster.length - yes - watch - no;
+    sheetMsg(`${yes} playing · ${watch} watching · ${no} out · ${silent} no answer` +
+             (silent ? ' (counted as out)' : ''));
+    render(); save();
+  } catch(err){
+    if (!quiet) sheetMsg('Could not reach the sheet: ' + err.message, true);
+  }
+}
+
+/* People who signed up but are not on the roster yet — one tap adds them */
+function renderGuests(){
+  const box = document.getElementById('sheetGuests');
+  const list = (S.cloud && S.cloud.guests) || [];
+  box.innerHTML = list.length
+    ? `<p class="hint" style="margin:6px 0 6px">New names from the sheet — not on your roster yet:</p>` +
+      list.map((g, i) => `<div class="rulerow">
+        <span class="rt${g.watch ? '' : ' apart'}">${g.watch ? 'watching' : 'playing'}</span>
+        <span class="rn">${esc(g.name)}</span>
+        <button class="linkish" data-guest="${i}" style="background:none;border:0">add</button>
+        <button class="x" data-skip="${i}" aria-label="Ignore ${esc(g.name)}">×</button>
+      </div>`).join('')
+    : '';
+}
+document.getElementById('sheetGuests').addEventListener('click', e => {
+  const add = e.target.closest('[data-guest]'), skip = e.target.closest('[data-skip]');
+  const list = (S.cloud && S.cloud.guests) || [];
+  if (add){
+    const g = list[+add.dataset.guest]; if (!g) return;
+    if (!S.roster.some(p => p.name.toLowerCase() === g.name.toLowerCase())){
+      S.roster.push({ name:g.name, lastWeek:null, games:0, sits:0, wins:0, losses:0,
+                      available: g.coming && !g.watch, rank:3 });
+    }
+    S.cloud.guests = list.filter((_, i) => i !== +add.dataset.guest);
+    sheetMsg(`${g.name} added to the roster at 3 — change the rating once you have seen them play.`);
+    render(); save();
+  } else if (skip){
+    S.cloud.guests = list.filter((_, i) => i !== +skip.dataset.skip);
+    render(); save();
+  }
+});
+
+function leaveDemo(){
+  try { localStorage.removeItem(DEMO_KEY); } catch(e){}
+  const real = S.cloud.real || {};
+  S.cloud.url = real.url || ''; S.cloud.key = real.key || '';
+  S.cloud.sheet = ''; S.cloud.guests = [];
+  sheetMsg(cloudOK() ? 'Back to your real sheet.' : 'Back to normal. Put the real address and key in when you are ready.');
+  render(); save();
+}
+function enterDemo(){
+  S.cloud.real = { url:S.cloud.url, key:S.cloud.key };
+  S.cloud.url = 'demo'; S.cloud.key = 'demo'; S.cloud.sheet = ''; S.cloud.guests = [];
+  sheetMsg('Practice mode. Open a sheet, copy the link, and open it in another tab to play both sides.');
+  render(); save();
+}
+document.getElementById('demoBtn').onclick = () => {
+  if (inDemo()) ask('Leave practice mode? The pretend answers are thrown away.', leaveDemo);
+  else if (cloudOK()) ask('Switch to practice mode? Your real sheet settings are kept and come back when you leave.', enterDemo);
+  else enterDemo();
+};
+
+document.getElementById('status').addEventListener('click', e => {
+  if (!e.target.closest('#ownIt')) return;
+  ask('Treat this as your own copy? The Rankings tab and the sign-up sheet come back. Ratings here stay at 3 until you paste your roster in.', () => {
+    S.guest = false;
+    render(); save();
+  });
+});
+
+document.getElementById('sheetEach').onclick = async e => {
+  if (!sheetLink()){ sheetMsg('Open this week\'s sheet first.', true); return; }
+  const lines = S.roster.map(p => `${p.name}\n${personalLink(p.name)}`).join('\n\n');
+  try {
+    await navigator.clipboard.writeText(lines);
+    e.currentTarget.textContent = `Copied ${S.roster.length}`;
+    sheetMsg(`${S.roster.length} personal links copied — paste the list somewhere and send each person their own. Each link shows only that player's name.`);
+  } catch(err){
+    const box = document.getElementById('shareText');
+    box.hidden = false; box.value = lines; box.focus();
+    e.currentTarget.textContent = 'Copy it from the box';
+  }
+  setTimeout(() => { e.currentTarget.textContent = 'Copy a link for each player'; }, 2500);
+};
+
+document.getElementById('sheetNew').onclick = sheetNew;
+document.getElementById('sheetPull').onclick = () => sheetPull(false);
+document.getElementById('sheetCopy').onclick = async e => {
+  const link = sheetLink();
+  if (!link){ sheetMsg('Open this week\'s sheet first.', true); return; }
+  try { await navigator.clipboard.writeText(link); e.currentTarget.textContent = 'Copied'; }
+  catch(err){ sheetMsg(link); }
+  setTimeout(() => { e.currentTarget.textContent = 'Copy the link'; }, 2000);
+};
+document.getElementById('sheetSetupBtn').onclick = () => {
+  const box = document.getElementById('sheetSetup');
+  box.hidden = !box.hidden;
+  if (!box.hidden){
+    document.getElementById('sbUrl').value  = S.cloud.url  || '';
+    document.getElementById('sbKey').value  = S.cloud.key  || '';
+    document.getElementById('sbPage').value = S.cloud.page || '';
+  }
+};
+document.getElementById('sbSave').onclick = () => {
+  S.cloud.url  = document.getElementById('sbUrl').value.trim();
+  S.cloud.key  = document.getElementById('sbKey').value.trim();
+  S.cloud.page = document.getElementById('sbPage').value.trim();
+  document.getElementById('sheetSetup').hidden = true;
+  sheetMsg(cloudOK() ? 'Saved. Open this week\'s sheet when you are ready.' : 'Both the address and the key are needed.', !cloudOK());
+  render(); save();
+};
+
+/* every twenty seconds, so answers land while you watch */
+setInterval(() => {
+  if (document.visibilityState === 'visible' && cloudOK() && S.cloud.sheet) sheetPull(true);
+}, 20000);
+
+/* ---------- pairing rules ---------- */
+let ruleDraft = [];
+function renderRules(){
+  const sec = document.getElementById('rulesSection');
+  sec.hidden = !!S.guest;
+  if (S.guest) return;
+  const rows = []
+    .concat((S.apart || []).map((g,k) => ({ g, k, kind:'apart' })))
+    .concat((S.together || []).map((g,k) => ({ g, k, kind:'with' })));
+  document.getElementById('ruleList').innerHTML = rows.length
+    ? rows.map(r => `<div class="rulerow">
+        <span class="rt ${r.kind}">${r.kind === 'apart' ? 'never together' : 'always together'}</span>
+        <span class="rn">${r.g.map(esc).join(' · ')}</span>
+        <button class="x" data-rule="${r.kind}" data-k="${r.k}" aria-label="Remove this rule">×</button>
+      </div>`).join('')
+    : `<p class="hint" style="margin-top:8px">No rules yet.</p>`;
+  const box = document.getElementById('ruleBox');
+  if (!box.hidden){
+    document.getElementById('rulePick').innerHTML = S.roster.map(p =>
+      `<button class="chip${ruleDraft.includes(p.name) ? ' picked' : ''}" data-pick="${esc(p.name)}">
+         <span>${esc(p.name)}</span></button>`).join('');
+  }
+  document.getElementById('ruleHint').textContent = (S.apart || []).length || (S.together || []).length
+    ? 'Never-together is set aside when there are only two sides, since some groups cannot be split that far.'
+    : 'Add players who should never be on the same side, or who always want to be.';
+}
+document.getElementById('ruleAdd').onclick = () => {
+  const box = document.getElementById('ruleBox');
+  box.hidden = !box.hidden;
+  ruleDraft = [];
+  document.getElementById('ruleAdd').textContent = box.hidden ? 'Add a rule' : 'Close';
+  renderRules();
+};
+document.getElementById('ruleCancel').onclick = () => {
+  document.getElementById('ruleBox').hidden = true;
+  document.getElementById('ruleAdd').textContent = 'Add a rule';
+  ruleDraft = []; renderRules();
+};
+document.getElementById('rulePick').addEventListener('click', e => {
+  const b = e.target.closest('[data-pick]'); if (!b) return;
+  const n = b.dataset.pick;
+  ruleDraft = ruleDraft.includes(n) ? ruleDraft.filter(x => x !== n) : ruleDraft.concat(n);
+  renderRules();
+});
+function saveRule(kind){
+  if (ruleDraft.length < 2){
+    document.getElementById('ruleHint').textContent = 'Pick at least two players first.';
+    return;
+  }
+  (kind === 'apart' ? S.apart : S.together).push(ruleDraft.slice());
+  ruleDraft = [];
+  document.getElementById('ruleBox').hidden = true;
+  document.getElementById('ruleAdd').textContent = 'Add a rule';
+  render(); save();
+}
+document.getElementById('ruleApart').onclick = () => saveRule('apart');
+document.getElementById('ruleWith').onclick  = () => saveRule('with');
+document.getElementById('ruleList').addEventListener('click', e => {
+  const b = e.target.closest('[data-rule]'); if (!b) return;
+  const list = b.dataset.rule === 'apart' ? S.apart : S.together;
+  list.splice(+b.dataset.k, 1);
+  render(); save();
+});
+
+/* ---------- a backup file ---------- */
+document.getElementById('dlBtn').onclick = async () => {
+  const hint = document.getElementById('backupHint');
+  const text = JSON.stringify(S, null, 1);
+  const name = `volleyball-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const done = 'Backup saved. Keep it somewhere safe — restoring it brings back the roster, ratings and history exactly as they are now.';
+
+  // On claude.ai the page has to hand the file over through the viewer; everywhere
+  // else (the standalone file, a hosted copy) an ordinary download link does it.
+  try {
+    const dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+    if (dl){
+      try { await dl.save({ filename: name, data: text }); hint.textContent = done; }
+      catch(err){
+        hint.textContent = (err && err.code === 'declined')
+          ? 'Backup cancelled — nothing was saved.'
+          : 'That save did not go through. Use Copy my roster instead.';
+      }
+      return;
+    }
+  } catch(err){ /* fall through to the plain link */ }
+
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([text], { type:'application/json' }));
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    hint.textContent = done;
+  } catch(err){
+    hint.textContent = 'This browser would not save the file. Use Copy my roster instead.';
+  }
+};
+document.getElementById('rsBtn').onclick = () => document.getElementById('rsFile').click();
+document.getElementById('rsFile').onchange = e => {
+  const f = e.target.files && e.target.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    let data = null;
+    try { data = JSON.parse(fr.result); } catch(err){}
+    if (!data || !Array.isArray(data.roster) || !data.roster.length){
+      document.getElementById('backupHint').textContent = 'That file is not a backup from this app.';
+      return;
+    }
+    ask(`Replace everything with this backup? ${data.roster.length} players, and whatever season is in it.`, () => {
+      data.guest = false;               // restoring a backup makes this copy yours
+      data.organizer = true;
+      S = Object.assign({}, S, data);
+      tidy(); render(); save();
+      document.getElementById('backupHint').textContent = `Restored — ${S.roster.length} players are back.`;
+    });
+  };
+  fr.readAsText(f);
+  e.target.value = '';
+};
+
+/* ---------- roster in and out ---------- */
+function exportRoster(){
+  return S.roster.map(p => `${p.name} | ${fmtRank(p.rank)}`).join('\n');
+}
+/* Takes the exported list, or just a list of names. Adds anyone new and
+   updates the rating of anyone already there. */
+function importRoster(raw){
+  const lines = String(raw).split(/[\n;]+/).map(x => x.trim()).filter(Boolean);
+  let added = 0, updated = 0;
+  lines.forEach(line => {
+    if (/^volleyball roster/i.test(line)) return;
+    const bar = line.lastIndexOf('|');
+    let name = line, rank = null;
+    if (bar > 0){
+      const tail = line.slice(bar + 1).trim();
+      if (/^[0-5](\.[05])?$/.test(tail)){ name = line.slice(0, bar).trim(); rank = clamp(+tail, 1, 5); S.organizer = true; S.guest = false; }
+    }
+    if (!name) return;
+    const p = S.roster.find(x => x.name.toLowerCase() === name.toLowerCase());
+    if (p){ if (rank !== null && p.rank !== rank){ p.rank = rank; updated++; } }
+    else { S.roster.push({ name, lastWeek:null, games:0, sits:0, wins:0, losses:0, available:true, rank: rank === null ? 3 : rank }); added++; }
+  });
+  return { added, updated };
+}
+
+document.getElementById('expBtn').onclick = async e => {
+  const btn = e.currentTarget, text = exportRoster();
+  if (!text){ document.getElementById('backupHint').textContent = 'No players to copy yet.'; return; }
+  document.getElementById('impBox').hidden = true;
+  const box = document.getElementById('expBox'), out = document.getElementById('expOut');
+  box.hidden = false; out.value = text; out.rows = Math.min(12, S.roster.length + 1);
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied';
+    document.getElementById('backupHint').textContent =
+      `${S.roster.length} players copied. Paste it into a note, or send it to whoever is picking next.`;
+  } catch(err){
+    out.focus(); out.select();
+    btn.textContent = 'Copy it from the box';
+  }
+  setTimeout(() => btn.textContent = 'Copy my roster', 2500);
+};
+document.getElementById('impBtn').onclick = () => {
+  document.getElementById('expBox').hidden = true;
+  const box = document.getElementById('impBox');
+  box.hidden = !box.hidden;
+  if (!box.hidden) document.getElementById('impIn').focus();
+};
+document.getElementById('impApply').onclick = () => {
+  const ta = document.getElementById('impIn'), r = importRoster(ta.value);
+  if (!r.added && !r.updated){
+    document.getElementById('backupHint').textContent = 'Nothing to add — check the list is one player per line.';
+    return;
+  }
+  ta.value = ''; document.getElementById('impBox').hidden = true;
+  document.getElementById('backupHint').textContent =
+    `${r.added} added${r.updated ? `, ${r.updated} rating${r.updated > 1 ? 's' : ''} updated` : ''}. Nobody was removed.`;
+  render(); save();
+};
+
+/* ---------- dragging players between the sides ---------- */
+let drag = null;
+
+function dropTarget(x, y, d){
+  if (d && d.ghost) d.ghost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (d && d.ghost) d.ghost.style.display = '';
+  if (!el || !el.closest) return null;
+  return el.closest('.slot[data-name]') || el.closest('.court[data-side]');
+}
+function markTarget(el){
+  document.querySelectorAll('.slot.over, .court.over').forEach(n => n.classList.remove('over'));
+  if (el) el.classList.add('over');
+}
+function lift(){
+  if (!drag || drag.lifted) return;
+  drag.lifted = true;
+  const r = drag.el.getBoundingClientRect();
+  const g = drag.el.cloneNode(true);
+  g.classList.add('ghost'); g.classList.remove('dragging', 'over');
+  g.style.width = r.width + 'px'; g.style.height = r.height + 'px';
+  drag.gw = r.width; drag.gh = r.height;
+  document.body.appendChild(g);
+  drag.ghost = g;
+  drag.el.classList.add('dragging');
+  moveGhost(drag.x, drag.y);
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch(err){}
+}
+function moveGhost(x, y){
+  if (!drag || !drag.ghost) return;
+  drag.ghost.style.left = (x - drag.gw / 2) + 'px';
+  drag.ghost.style.top  = (y - drag.gh / 2) + 'px';
+  markTarget(dropTarget(x, y, drag));
+}
+function startDrag(el, x, y, touch){
+  cancelDrag();
+  drag = { el, name: el.dataset.name, side: +el.dataset.side, x, y, sx:x, sy:y,
+           lifted:false, moved:false, touch, timer:null, ghost:null };
+  if (touch) drag.timer = setTimeout(lift, 260);
+}
+function cancelDrag(){
+  if (!drag) return;
+  clearTimeout(drag.timer);
+  if (drag.ghost) drag.ghost.remove();
+  drag.el.classList.remove('dragging');
+  markTarget(null);
+  drag = null;
+}
+function endDrag(x, y){
+  const d = drag; if (!d) return;
+  clearTimeout(d.timer);
+  const tgt = d.lifted ? dropTarget(x, y, d) : null;
+  if (d.ghost) d.ghost.remove();
+  d.el.classList.remove('dragging');
+  markTarget(null);
+  drag = null;
+  if (!d.lifted){ if (!d.moved) setCaptain(d.side, d.name); return; }
+  if (!tgt) return;
+  if (tgt.classList.contains('slot')) moveOrSwap(d.side, d.name, +tgt.dataset.side, tgt.dataset.name);
+  else moveOrSwap(d.side, d.name, +tgt.dataset.side, null);
+}
+
+const lineupEl = document.getElementById('lineup');
+
+lineupEl.addEventListener('touchstart', e => {
+  if (e.touches.length > 1){ cancelDrag(); return; }
+  const el = e.target.closest && e.target.closest('.slot[data-name]'); if (!el) return;
+  const t = e.touches[0];
+  startDrag(el, t.clientX, t.clientY, true);
+}, { passive:true });
+
+lineupEl.addEventListener('touchmove', e => {
+  if (!drag) return;
+  const t = e.touches[0];
+  if (!drag.lifted){
+    if (Math.hypot(t.clientX - drag.sx, t.clientY - drag.sy) > 12) cancelDrag();  // they are scrolling
+    return;
+  }
+  e.preventDefault();                       // now the page stays put and the card follows
+  drag.x = t.clientX; drag.y = t.clientY;
+  moveGhost(drag.x, drag.y);
+}, { passive:false });
+
+lineupEl.addEventListener('touchend', e => {
+  if (!drag) return;
+  const t = e.changedTouches[0];
+  endDrag(t.clientX, t.clientY);
+});
+lineupEl.addEventListener('touchcancel', cancelDrag);
+
+lineupEl.addEventListener('mousedown', e => {
+  if (e.button) return;
+  const el = e.target.closest && e.target.closest('.slot[data-name]'); if (!el) return;
+  e.preventDefault();
+  startDrag(el, e.clientX, e.clientY, false);
+});
+document.addEventListener('mousemove', e => {
+  if (!drag || drag.touch) return;
+  if (!drag.lifted){
+    if (Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 5) return;
+    drag.moved = true; lift();
+  }
+  drag.x = e.clientX; drag.y = e.clientY;
+  moveGhost(drag.x, drag.y);
+});
+document.addEventListener('mouseup', e => { if (drag && !drag.touch) endDrag(e.clientX, e.clientY); });
+
+document.getElementById('lineup').addEventListener('click', e => {
+  const u = e.target.closest('#undoGameBtn');
+  if (u){ undoGame(); return; }
+  const w = e.target.closest('[data-won]');
+  if (w) gameWon(+w.dataset.won);
+});
+
+document.getElementById('pickBtn').onclick = pickTeam;
+document.getElementById('undoBtn').onclick = undo;
+document.getElementById('resetBtn').onclick = () => {
+  ask('Start a new season? Weeks and games go back to zero, the roster and ratings stay.', () => {
+    S.week = 0; S.history = []; S.note = '';
+    S.results = [];
+    S.roster.forEach(p => { p.lastWeek = null; p.games = 0; p.sits = 0; p.wins = 0; p.losses = 0; p.available = true; });
+    render(); save();
+  });
+};
+
+let fromLink = false;
+const code = /[#&]s=([^&]+)/.exec(location.hash || '');
+if (code){ try { fromLink = unpackState(code[1]); } catch(e){} }
+if (!fromLink){
+  const old = /[#&]r=([^&]+)/.exec(location.hash || '');     // older roster-only links
+  if (old){
+    try {
+      const names = JSON.parse(decodeURIComponent(old[1]));
+      if (Array.isArray(names) && names.length){ S.roster = []; addNames(names.join('\n')); S.guest = true; fromLink = true; }
+    } catch(e){}
+  }
+}
+if (!fromLink){
+  const had = loadLocal();
+  if (typeof S.organizer !== 'boolean'){
+    const usedBefore = had && ((S.week|0) > 0 || (Array.isArray(S.history) && S.history.length > 0));
+    S.organizer = !!usedBefore;
+    if (!S.organizer) S.roster.forEach(p => { p.rank = 3; });
+  }
+}
+if (!S.roster.length){ importRoster(SEED); if (typeof S.organizer !== 'boolean') S.organizer = false; }
+render();
+save();
+if (fromLink){ try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} }
+</script>
+<script>
+if ('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing; if (!w) return;
+        w.addEventListener('statechange', () => {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) w.postMessage('skip-waiting');
+        });
+      });
+    }).catch(() => {});
+  });
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading) return; reloading = true; location.reload();
+  });
+}
+let installEvt = null;
+const installBtn = document.getElementById('installBtn');
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; installBtn.hidden = false; });
+installBtn.onclick = async () => {
+  if (!installEvt) return;
+  installBtn.hidden = true; installEvt.prompt(); await installEvt.userChoice; installEvt = null;
+};
+window.addEventListener('appinstalled', () => { installBtn.hidden = true; installEvt = null; });
+</script>
+</body>
+</html>
