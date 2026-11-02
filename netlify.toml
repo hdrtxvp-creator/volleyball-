@@ -1,0 +1,16 @@
+# Static site: nothing to build, publish the repository root as-is.
+[build]
+  publish = "."
+  command = ""
+
+# The sign-up page and the app are plain files; make sure they are served fresh
+# enough that a push reaches people's phones without a hard refresh.
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
