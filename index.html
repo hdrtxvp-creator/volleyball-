@@ -1113,7 +1113,10 @@ document.getElementById('rosterBody').addEventListener('click', e => {
     justRanked = p.name;
   }
   else if (act === 'rename'){ editing = p.name; justRanked = null; render(); return; }
-  else if (act === 'toggle'){ p.available = !p.available; }
+  else if (act === 'toggle'){
+    p.available = !p.available;
+    if (S.cloud && S.cloud.sheet) p.manual = true;   // the sheet stops overruling this one
+  }
   render(); save();
 });
 document.getElementById('rosterBody').addEventListener('keydown', e => {
@@ -1308,12 +1311,12 @@ document.getElementById('imgBtn').onclick = async e => {
 
 /* ---------- who's coming this week ---------- */
 document.getElementById('allIn').onclick = () => {
-  S.roster.forEach(p => p.available = true);
+  S.roster.forEach(p => { p.available = true; if (S.cloud && S.cloud.sheet) p.manual = true; });
   document.getElementById('comingHint').textContent = `All ${S.roster.length} marked as coming.`;
   render(); save();
 };
 document.getElementById('allOut').onclick = () => {
-  S.roster.forEach(p => p.available = false);
+  S.roster.forEach(p => { p.available = false; if (S.cloud && S.cloud.sheet) p.manual = true; });
   document.getElementById('comingHint').textContent = 'Everyone is out — now tap the ones who are coming.';
   render(); save();
 };
@@ -1487,7 +1490,7 @@ async function sheetNew(){
   sheetMsg('Opening the sheet…');
   try {
     await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
-    S.roster.forEach(p => p.available = false);   // everyone out until they say otherwise
+    S.roster.forEach(p => { p.available = false; delete p.manual; });  // everyone out until they say so
     sheetMsg('Sheet is open for this week. Copy the link and send it to the group.');
     render(); save();
   } catch(err){
@@ -1499,19 +1502,29 @@ async function sheetPull(quiet){
   if (!cloudOK() || !S.cloud.sheet){ if (!quiet) sheetMsg('No sheet open yet.', true); return; }
   try {
     const rows = await sheetApi().listSignups(S.cloud.sheet, S.cloud.week);
-    let yes = 0, watch = 0, no = 0;
-    const guests = [];
+    let yes = 0, watch = 0, no = 0, held = 0;
+    const guests = [], answered = new Set();
     (rows || []).forEach(r => {
       const playing = r.coming === true && r.watch !== true;
       const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
       if (!p){ guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true }); return; }
-      p.available = playing;                       // a watcher is here, but not picked
+      answered.add(p.name);
       if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
+      if (p.manual) { held++; return; }            // you overruled the sheet for this one
+      p.available = playing;                       // a watcher is here, but not picked
+    });
+    // nobody answers for the quiet ones, so the sheet does: they are out
+    let silent = 0;
+    S.roster.forEach(p => {
+      if (answered.has(p.name)) return;
+      silent++;
+      if (p.manual) { held++; return; }
+      p.available = false;
     });
     S.cloud.guests = guests;
-    const silent = S.roster.length - yes - watch - no;
     sheetMsg(`${yes} playing · ${watch} watching · ${no} out · ${silent} no answer` +
-             (silent ? ' (counted as out)' : ''));
+             (silent ? ' (counted as out)' : '') +
+             (held ? ` · ${held} set by you, left alone` : ''));
     render(); save();
   } catch(err){
     if (!quiet) sheetMsg('Could not reach the sheet: ' + err.message, true);
