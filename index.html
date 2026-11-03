@@ -361,8 +361,8 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <p class="spots" id="sheetStatus"></p>
   <div id="sheetGuests"></div>
   <div id="sheetSetup" hidden>
-    <input id="sbUrl" placeholder="Supabase project URL" autocomplete="off" spellcheck="false">
-    <input id="sbKey" placeholder="anon public key" autocomplete="off" spellcheck="false">
+    <input id="sbUrl" placeholder="Firebase project ID (e.g. my-project-12345)" autocomplete="off" spellcheck="false">
+    <input id="sbKey" placeholder="Firebase web API key (starts AIza…)" autocomplete="off" spellcheck="false">
     <input id="sbPage" placeholder="Address of rsvp.html (leave blank if it sits beside this app)" autocomplete="off" spellcheck="false">
     <button class="ghost" id="sbSave" style="width:100%;margin-top:8px">Save these</button>
   </div>
@@ -539,7 +539,8 @@ function tidy(){
   if (!Array.isArray(S.results)) S.results = [];
   if (!Array.isArray(S.apart)) S.apart = [['Mahesh', 'Lalu', 'Harish']];
   if (!Array.isArray(S.together)) S.together = [];
-  if (!S.cloud || typeof S.cloud !== 'object') S.cloud = { url:'', key:'', page:'', sheet:'', week:'' };
+  if (!S.cloud || typeof S.cloud !== 'object') S.cloud = { proj:'', key:'', page:'', sheet:'', week:'' };
+  if (S.cloud.url !== undefined){ delete S.cloud.url; }   // older copies kept a Supabase address
   S.apart = S.apart.filter(g => Array.isArray(g) && g.length > 1);
   S.together = S.together.filter(g => Array.isArray(g) && g.length > 1);
   S.roster.forEach(p => {
@@ -1344,53 +1345,111 @@ document.getElementById('pasteApply').onclick = () => {
   render(); save();
 };
 
-/* ---------- the sign-up sheet the group fills in ---------- */
-const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-const cloudOK = () => !!(S.cloud && S.cloud.url && S.cloud.key);
-const sheetMsg = (t, warn) => {
-  const el = document.getElementById('sheetStatus');
-  el.textContent = t; el.classList.toggle('warn', !!warn);
-};
-
-/* ---------- practice mode ----------
-   A pretend sheet kept in this browser, so the whole flow can be tried before
-   any of it is set up for real. Nothing leaves the device. */
+/* ---------- where the sign-up sheet lives ----------
+   Firestore over its plain web API, so there is no library to load. Two values
+   identify it: the project id and the web API key, both safe to ship in a page —
+   the rules on the database are what actually limit access.
+   Practice mode swaps the same small interface for one kept in this browser. */
 const DEMO_KEY = 'volleyball-demo-sheet';
-function demoDb(){
-  try { return JSON.parse(localStorage.getItem(DEMO_KEY)) || { sheets:[], signups:[] }; }
-  catch(e){ return { sheets:[], signups:[] }; }
-}
-function demoApi(path, opts){
-  const db = demoDb();
-  const [table, query] = String(path).split('?');
-  const q = new URLSearchParams(query || '');
-  const eq = k => { const v = q.get(k); return v === null ? null : v.replace(/^eq\./, ''); };
-  if (!db[table]) db[table] = [];
+const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
-  if (opts && opts.method === 'POST'){
-    const keys = table === 'sheets' ? ['sheet'] : ['sheet', 'week', 'name'];
-    JSON.parse(opts.body).forEach(r => {
-      const at = db[table].findIndex(x => keys.every(k => x[k] === r[k]));
-      if (at >= 0) db[table][at] = Object.assign({}, db[table][at], r);
-      else db[table].push(r);
-    });
-    try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){}
-    return null;
-  }
-  let rows = db[table].slice();
-  ['sheet','week','name'].forEach(k => {
-    const v = eq(k);
-    if (v !== null) rows = rows.filter(x => String(x[k]) === v);
-  });
-  return rows;
+function demoStore(){
+  const read = () => { try { return JSON.parse(localStorage.getItem(DEMO_KEY)) || {sheets:{},signups:{}}; }
+                       catch(e){ return {sheets:{},signups:{}}; } };
+  const write = db => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){} };
+  return {
+    async putSheet(sheet, week, names){
+      const db = read(); db.sheets[sheet] = { week, names }; write(db);
+    },
+    async getSheet(sheet){ return read().sheets[sheet] || null; },
+    async putSignup(sheet, week, name, coming, watch){
+      const db = read(); const k = sheet + '|' + week;
+      db.signups[k] = db.signups[k] || {};
+      db.signups[k][name] = { name, coming, watch };
+      write(db);
+    },
+    async listSignups(sheet, week){
+      return Object.values(read().signups[sheet + '|' + week] || {});
+    }
+  };
 }
-const inDemo = () => S.cloud && S.cloud.url === 'demo';
+
+function firestore(proj, key){
+  const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proj)}/databases/(default)/documents`;
+  const at = path => `${base}${path}?key=${encodeURIComponent(key)}`;
+  const str  = v => ({ stringValue: String(v) });
+  const bool = v => ({ booleanValue: !!v });
+  const docId = n => b64url(n);           // names hold spaces and brackets; this keeps paths clean
+  async function call(url, opts){
+    const r = await fetch(url, opts);
+    if (!r.ok){
+      const body = (await r.text()).slice(0, 200);
+      const err = new Error(r.status + ' ' + body); err.status = r.status; throw err;
+    }
+    const t = await r.text();
+    return t ? JSON.parse(t) : null;
+  }
+  const weekPath = (sheet, week) =>
+    `/sheets/${encodeURIComponent(sheet)}/weeks/${encodeURIComponent(week)}/signups`;
+  return {
+    async putSheet(sheet, week, names){
+      await call(at(`/sheets/${encodeURIComponent(sheet)}`), {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fields: {
+          week: str(week),
+          names: { arrayValue: { values: names.map(str) } },
+          updated: str(new Date().toISOString())
+        }})
+      });
+    },
+    async getSheet(sheet){
+      try {
+        const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
+        if (!d || !d.fields) return null;
+        return { week: (d.fields.week || {}).stringValue || '',
+                 names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
+      } catch(e){ if (e.status === 404) return null; throw e; }
+    },
+    async putSignup(sheet, week, name, coming, watch){
+      await call(at(`${weekPath(sheet, week)}/${docId(name)}`), {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fields: {
+          name: str(name), coming: bool(coming), watch: bool(watch),
+          updated: str(new Date().toISOString())
+        }})
+      });
+    },
+    async listSignups(sheet, week){
+      const out = []; let token = '';
+      do {
+        let url = at(weekPath(sheet, week)) + '&pageSize=300';
+        if (token) url += '&pageToken=' + encodeURIComponent(token);
+        let d;
+        try { d = await call(url); }
+        catch(e){ if (e.status === 404) return out; throw e; }
+        ((d || {}).documents || []).forEach(doc => {
+          const f = doc.fields || {};
+          if ((f.name || {}).stringValue) out.push({
+            name: f.name.stringValue,
+            coming: !!(f.coming || {}).booleanValue,
+            watch:  !!(f.watch  || {}).booleanValue
+          });
+        });
+        token = (d || {}).nextPageToken || '';
+      } while (token);
+      return out;
+    }
+  };
+}
+
+const inDemo = () => S.cloud && S.cloud.proj === 'demo';
+const cloudOK = () => !!(S.cloud && S.cloud.proj && S.cloud.key);
+const sheetApi = () => inDemo() ? demoStore() : firestore(S.cloud.proj, S.cloud.key);
+
 const localOnly = () => location.protocol === 'file:' ||
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-/* Why a link cannot reach anyone else yet, or '' when it can. */
-/* The one thing to do next, in order. '' once links can actually be made. */
 function nextStep(){
-  if (!cloudOK()) return 'Step 1 — press "Try it without setting anything up" to try the whole thing on a pretend sheet, or add your Supabase details under Sheet settings for the real one.';
+  if (!cloudOK()) return 'Step 1 — press "Try it without setting anything up" to try the whole thing on a pretend sheet, or add your Firebase project id and web API key under Sheet settings for the real one.';
   if (!S.cloud.sheet) return 'Step 2 — press "Open this week\'s sheet". The link buttons start working once a sheet is open.';
   return '';
 }
@@ -1401,22 +1460,15 @@ function linkWarning(){
   return '';
 }
 
-async function sb(path, opts){
-  if (inDemo()) return demoApi(path, opts);
-  const base = S.cloud.url.replace(/\/+$/, '') + '/rest/v1/';
-  const headers = Object.assign(
-    { apikey:S.cloud.key, Authorization:'Bearer ' + S.cloud.key, 'Content-Type':'application/json' },
-    (opts && opts.headers) || {});
-  const r = await fetch(base + path, Object.assign({}, opts, { headers }));
-  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 140));
-  const t = await r.text();
-  return t ? JSON.parse(t) : null;
-}
+const sheetMsg = (t, warn) => {
+  const el = document.getElementById('sheetStatus');
+  el.textContent = t; el.classList.toggle('warn', !!warn);
+};
 
 function sheetLink(){
   if (!cloudOK() || !S.cloud.sheet) return '';
   const page = (S.cloud.page || '').trim() || new URL('rsvp.html', location.href).href;
-  return `${page}?s=${encodeURIComponent(S.cloud.sheet)}&u=${b64url(S.cloud.url)}&k=${b64url(S.cloud.key)}`;
+  return `${page}?s=${encodeURIComponent(S.cloud.sheet)}&p=${b64url(S.cloud.proj)}&k=${b64url(S.cloud.key)}`;
 }
 
 function personalLink(name){
@@ -1426,7 +1478,7 @@ function personalLink(name){
 
 async function sheetNew(){
   if (!cloudOK()){
-    sheetMsg('Not set up yet. To try the whole thing now, press "Try it without setting anything up" — that uses a pretend sheet kept in this browser. For the real one, put the project address and key in under Sheet settings.', true);
+    sheetMsg(nextStep(), true);
     return;
   }
   if (!S.roster.length){ sheetMsg('Add some players first.', true); return; }
@@ -1434,11 +1486,7 @@ async function sheetNew(){
   S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
   sheetMsg('Opening the sheet…');
   try {
-    await sb('sheets?on_conflict=sheet', {
-      method:'POST',
-      headers:{ Prefer:'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify([{ sheet:S.cloud.sheet, week:S.cloud.week, names:S.roster.map(p => p.name), updated_at:new Date().toISOString() }])
-    });
+    await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
     S.roster.forEach(p => p.available = false);   // everyone out until they say otherwise
     sheetMsg('Sheet is open for this week. Copy the link and send it to the group.');
     render(); save();
@@ -1450,7 +1498,7 @@ async function sheetNew(){
 async function sheetPull(quiet){
   if (!cloudOK() || !S.cloud.sheet){ if (!quiet) sheetMsg('No sheet open yet.', true); return; }
   try {
-    const rows = await sb(`signups?sheet=eq.${encodeURIComponent(S.cloud.sheet)}&week=eq.${encodeURIComponent(S.cloud.week)}&select=name,coming,watch`);
+    const rows = await sheetApi().listSignups(S.cloud.sheet, S.cloud.week);
     let yes = 0, watch = 0, no = 0;
     const guests = [];
     (rows || []).forEach(r => {
@@ -1505,14 +1553,14 @@ document.getElementById('sheetGuests').addEventListener('click', e => {
 function leaveDemo(){
   try { localStorage.removeItem(DEMO_KEY); } catch(e){}
   const real = S.cloud.real || {};
-  S.cloud.url = real.url || ''; S.cloud.key = real.key || '';
+  S.cloud.proj = real.proj || ''; S.cloud.key = real.key || '';
   S.cloud.sheet = ''; S.cloud.guests = [];
-  sheetMsg(cloudOK() ? 'Back to your real sheet.' : 'Back to normal. Put the real address and key in when you are ready.');
+  sheetMsg(cloudOK() ? 'Back to your real sheet.' : 'Back to normal. Put the project id and key in when you are ready.');
   render(); save();
 }
 function enterDemo(){
-  S.cloud.real = { url:S.cloud.url, key:S.cloud.key };
-  S.cloud.url = 'demo'; S.cloud.key = 'demo'; S.cloud.sheet = ''; S.cloud.guests = [];
+  S.cloud.real = { proj:S.cloud.proj, key:S.cloud.key };
+  S.cloud.proj = 'demo'; S.cloud.key = 'demo'; S.cloud.sheet = ''; S.cloud.guests = [];
   sheetMsg('Practice mode. Open a sheet, copy the link, and open it in another tab to play both sides.');
   render(); save();
 }
@@ -1607,17 +1655,20 @@ document.getElementById('sheetSetupBtn').onclick = () => {
   const box = document.getElementById('sheetSetup');
   box.hidden = !box.hidden;
   if (!box.hidden){
-    document.getElementById('sbUrl').value  = S.cloud.url  || '';
+    document.getElementById('sbUrl').value  = S.cloud.proj || '';
     document.getElementById('sbKey').value  = S.cloud.key  || '';
     document.getElementById('sbPage').value = S.cloud.page || '';
   }
 };
 document.getElementById('sbSave').onclick = () => {
-  S.cloud.url  = document.getElementById('sbUrl').value.trim();
+  S.cloud.proj = document.getElementById('sbUrl').value.trim()
+                   .replace(/^https?:\/\//, '').replace(/\.firebaseapp\.com.*$/, '')
+                   .replace(/\.web\.app.*$/, '').replace(/\/.*$/, '');
+
   S.cloud.key  = document.getElementById('sbKey').value.trim();
   S.cloud.page = document.getElementById('sbPage').value.trim();
   document.getElementById('sheetSetup').hidden = true;
-  sheetMsg(cloudOK() ? 'Saved. Open this week\'s sheet when you are ready.' : 'Both the address and the key are needed.', !cloudOK());
+  sheetMsg(cloudOK() ? 'Saved. Open this week\'s sheet when you are ready.' : 'Both the project id and the key are needed.', !cloudOK());
   render(); save();
 };
 

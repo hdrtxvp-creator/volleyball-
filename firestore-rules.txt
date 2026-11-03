@@ -1,0 +1,29 @@
+// Weekly Volleyball — Firestore security rules
+//
+// READ THIS FIRST if you already use this Firebase project for something else:
+// these rules REPLACE whatever is in the Rules tab. Do not paste over existing
+// rules you rely on — either make a separate Firebase project for volleyball
+// (recommended), or paste only the two `match /sheets/...` blocks below INSIDE
+// your existing `match /databases/{database}/documents { ... }` block.
+//
+// What these allow: anyone with the sign-up link can read the week's names and
+// write their own yes/no. Nothing can be deleted, and no other collection in
+// the project is reachable. Ratings never go near this database.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // the week's sheet: the list of names
+    match /sheets/{sheet} {
+      allow read, create, update: if true;
+      allow delete: if false;
+
+      // one document per person per week: coming / watching / out
+      match /weeks/{week}/signups/{person} {
+        allow read, create, update: if true;
+        allow delete: if false;
+      }
+    }
+  }
+}

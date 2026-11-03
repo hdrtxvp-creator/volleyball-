@@ -89,7 +89,7 @@ const b64in = s => { try { return decodeURIComponent(escape(atob(String(s).repla
 
 const SHEET = qs.get('s') || '';
 const ONLY  = b64in(qs.get('n') || '');
-const URLB  = b64in(qs.get('u'));
+const PROJ  = b64in(qs.get('p'));
 const KEY   = b64in(qs.get('k'));
 
 const listEl  = document.getElementById('list');
@@ -100,43 +100,81 @@ const findEl  = document.getElementById('find');
 let names = [], week = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
 const solo = () => !!ONLY;
 
-const H = () => ({ apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json' });
 
 const DEMO_KEY = 'volleyball-demo-sheet';
-function demoApi(path, opts){
-  let db;
-  try { db = JSON.parse(localStorage.getItem(DEMO_KEY)) || { sheets:[], signups:[] }; }
-  catch(e){ db = { sheets:[], signups:[] }; }
-  const [table, query] = String(path).split('?');
-  const q = new URLSearchParams(query || '');
-  const eq = k => { const v = q.get(k); return v === null ? null : v.replace(/^eq\./, ''); };
-  if (!db[table]) db[table] = [];
+const b64url = t => btoa(unescape(encodeURIComponent(t))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
-  if (opts && opts.method === 'POST'){
-    const keys = table === 'sheets' ? ['sheet'] : ['sheet', 'week', 'name'];
-    JSON.parse(opts.body).forEach(r => {
-      const at = db[table].findIndex(x => keys.every(k => x[k] === r[k]));
-      if (at >= 0) db[table][at] = Object.assign({}, db[table][at], r);
-      else db[table].push(r);
-    });
-    try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){}
-    return null;
+function demoStore(){
+  const read = () => { try { return JSON.parse(localStorage.getItem(DEMO_KEY)) || {sheets:{},signups:{}}; }
+                       catch(e){ return {sheets:{},signups:{}}; } };
+  const write = db => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){} };
+  return {
+    async getSheet(sheet){ return read().sheets[sheet] || null; },
+    async putSignup(sheet, week, name, coming, watch){
+      const db = read(); const k = sheet + '|' + week;
+      db.signups[k] = db.signups[k] || {};
+      db.signups[k][name] = { name, coming, watch };
+      write(db);
+    },
+    async listSignups(sheet, week){ return Object.values(read().signups[sheet + '|' + week] || {}); }
+  };
+}
+
+function firestore(proj, key){
+  const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proj)}/databases/(default)/documents`;
+  const at = path => `${base}${path}?key=${encodeURIComponent(key)}`;
+  const str  = v => ({ stringValue: String(v) });
+  const bool = v => ({ booleanValue: !!v });
+  async function call(url, opts){
+    const r = await fetch(url, opts);
+    if (!r.ok){ const e = new Error(r.status + ' ' + (await r.text()).slice(0,200)); e.status = r.status; throw e; }
+    const t = await r.text();
+    return t ? JSON.parse(t) : null;
   }
-  let rows = db[table].slice();
-  ['sheet','week','name'].forEach(k => {
-    const v = eq(k);
-    if (v !== null) rows = rows.filter(x => String(x[k]) === v);
-  });
-  return rows;
+  const weekPath = (sheet, week) =>
+    `/sheets/${encodeURIComponent(sheet)}/weeks/${encodeURIComponent(week)}/signups`;
+  return {
+    async getSheet(sheet){
+      try {
+        const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
+        if (!d || !d.fields) return null;
+        return { week: (d.fields.week || {}).stringValue || '',
+                 names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
+      } catch(e){ if (e.status === 404) return null; throw e; }
+    },
+    async putSignup(sheet, week, name, coming, watch){
+      await call(at(`${weekPath(sheet, week)}/${b64url(name)}`), {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fields: {
+          name: str(name), coming: bool(coming), watch: bool(watch),
+          updated: str(new Date().toISOString())
+        }})
+      });
+    },
+    async listSignups(sheet, week){
+      const out = []; let token = '';
+      do {
+        let url = at(weekPath(sheet, week)) + '&pageSize=300';
+        if (token) url += '&pageToken=' + encodeURIComponent(token);
+        let d;
+        try { d = await call(url); }
+        catch(e){ if (e.status === 404) return out; throw e; }
+        ((d || {}).documents || []).forEach(doc => {
+          const f = doc.fields || {};
+          if ((f.name || {}).stringValue) out.push({
+            name: f.name.stringValue,
+            coming: !!(f.coming || {}).booleanValue,
+            watch:  !!(f.watch  || {}).booleanValue
+          });
+        });
+        token = (d || {}).nextPageToken || '';
+      } while (token);
+      return out;
+    }
+  };
 }
 
-async function sb(path, opts){
-  if (URLB === 'demo') return demoApi(path, opts);
-  const r = await fetch(URLB.replace(/\/+$/, '') + '/rest/v1/' + path, opts || { headers: H() });
-  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 120));
-  const t = await r.text();
-  return t ? JSON.parse(t) : null;
-}
+const api = () => PROJ === 'demo' ? demoStore() : firestore(PROJ, KEY);
 
 function render(){
   const shown = solo() ? [ONLY] : names.filter(n => !filter || n.toLowerCase().includes(filter));
@@ -162,20 +200,20 @@ function render(){
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 async function load(quiet){
-  if (!SHEET || !URLB || !KEY){
+  if (!SHEET || !PROJ || !KEY){
     noteEl.innerHTML = '<span class="bad">This link is missing part of its address.</span> Ask for the link again.';
     findEl.hidden = true;
     return;
   }
   try {
-    const sheet = await sb(`sheets?sheet=eq.${encodeURIComponent(SHEET)}&select=week,names`);
-    if (!sheet || !sheet.length){
+    const sheet = await api().getSheet(SHEET);
+    if (!sheet){
       noteEl.innerHTML = '<span class="bad">No sign-up sheet here yet.</span> It opens when the teams are being sorted for the week.';
       return;
     }
-    week  = sheet[0].week;
-    names = sheet[0].names || [];
-    const rows = await sb(`signups?sheet=eq.${encodeURIComponent(SHEET)}&week=eq.${encodeURIComponent(week)}&select=name,coming,watch`);
+    week  = sheet.week;
+    names = (sheet.names || []).slice();
+    const rows = await api().listSignups(SHEET, week);
     answers = {}; watching = {};
     (rows || []).forEach(r => {
       answers[r.name] = r.coming;
@@ -199,11 +237,7 @@ async function answer(name, kind){
   busy[name] = true;
   render();
   try {
-    await sb('signups?on_conflict=sheet,week,name', {
-      method: 'POST',
-      headers: Object.assign(H(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-      body: JSON.stringify([{ sheet: SHEET, week, name, coming, watch, updated_at: new Date().toISOString() }])
-    });
+    await api().putSignup(SHEET, week, name, coming, watch);
     noteEl.textContent = watch ? `Noted — you're watching.`
       : coming ? `Got it — you're playing.` : `Noted — you're out this week.`;
   } catch(err){
@@ -246,7 +280,7 @@ if (solo()){
     'Hi <b>' + esc(ONLY) + '</b> — are you playing this week? Tap one. You can change it any time before the teams go out.';
 }
 
-if (URLB === 'demo'){
+if (PROJ === 'demo'){
   const f = document.getElementById('demoFlag');
   f.hidden = false;
   f.textContent = 'Practice run — this is a pretend sheet on this device only. Nothing is sent anywhere.';
