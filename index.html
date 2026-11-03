@@ -352,6 +352,9 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <button class="ghost" id="sheetEach">Copy a link for each player</button>
     <button class="ghost" id="sheetSendList">Send one by one</button>
   </div>
+  <p class="hint" id="freshRow" hidden style="margin-top:6px">
+    <b class="linkish" id="freshBtn">Start a fresh week</b> — clears every answer and starts the count again.
+  </p>
   <div id="sendList" hidden></div>
   <div class="fitrow">
     <button class="ghost" id="demoBtn">Try it without setting anything up</button>
@@ -359,6 +362,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <p class="spots warn" id="sheetNext" hidden></p>
   <p class="spots warn" id="sheetWarn" hidden></p>
   <p class="spots" id="sheetStatus"></p>
+  <div id="sheetWho"></div>
   <div id="sheetGuests"></div>
   <div id="sheetSetup" hidden>
     <input id="sbUrl" placeholder="Firebase project ID (e.g. my-project-12345)" autocomplete="off" spellcheck="false">
@@ -947,7 +951,8 @@ function render(){
   document.getElementById('privRow').hidden = !org;
   document.getElementById('expBtn').hidden = !org;
   document.getElementById('sheetSection').hidden = S.guest;
-  if (!S.guest){ renderGuests(); renderSendList(); }
+  if (!S.guest){ renderWho(); renderGuests(); renderSendList(); }
+  document.getElementById('freshRow').hidden = !(S.cloud && S.cloud.sheet);
   document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
   document.getElementById('sheetSetupBtn').hidden = inDemo();
   if (inDemo()) document.getElementById('sheetSetup').hidden = true;
@@ -1479,23 +1484,42 @@ function personalLink(name){
   return base ? base + '&n=' + b64url(name) : '';
 }
 
+async function freshWeek(){
+  S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+  S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
+  S.roster.forEach(p => { p.available = false; delete p.manual; });
+  S.cloud.guests = []; S.cloud.last = null;
+  sheetMsg('Opening the sheet…');
+  try {
+    await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
+    sheetMsg('Sheet is open for this week. Everyone starts as not coming — copy the link and send it out.');
+    render(); save();
+  } catch(err){
+    sheetMsg('Could not open the sheet: ' + err.message, true);
+  }
+}
+
 async function sheetNew(){
   if (!cloudOK()){
     sheetMsg(nextStep(), true);
     return;
   }
   if (!S.roster.length){ sheetMsg('Add some players first.', true); return; }
-  S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
-  S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
-  sheetMsg('Opening the sheet…');
-  try {
-    await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
-    S.roster.forEach(p => { p.available = false; delete p.manual; });  // everyone out until they say so
-    sheetMsg('Sheet is open for this week. Copy the link and send it to the group.');
-    render(); save();
-  } catch(err){
-    sheetMsg('Could not open the sheet: ' + err.message, true);
+
+  // A sheet is already running. Pressing again used to start a new week and
+  // quietly orphan every answer, so now it refreshes the names and keeps them.
+  if (S.cloud.sheet && S.cloud.week){
+    sheetMsg('Updating the sheet…');
+    try {
+      await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
+      sheetMsg('Sheet updated with the current roster. Same week, answers kept — use "start a fresh week" to clear them.');
+      render(); save();
+    } catch(err){
+      sheetMsg('Could not update the sheet: ' + err.message, true);
+    }
+    return;
   }
+  await freshWeek();
 }
 
 async function sheetPull(quiet){
@@ -1522,6 +1546,12 @@ async function sheetPull(quiet){
       p.available = false;
     });
     S.cloud.guests = guests;
+    S.cloud.last = {
+      answered: yes + watch + no,
+      playing:  S.roster.filter(p => answered.has(p.name) && p.available).map(p => p.name),
+      watching: (rows || []).filter(r => r.watch === true).map(r => r.name),
+      out:      (rows || []).filter(r => r.coming !== true).map(r => r.name)
+    };
     sheetMsg(`${yes} playing · ${watch} watching · ${no} out · ${silent} no answer` +
              (silent ? ' (counted as out)' : '') +
              (held ? ` · ${held} set by you, left alone` : ''));
@@ -1532,6 +1562,18 @@ async function sheetPull(quiet){
 }
 
 /* People who signed up but are not on the roster yet — one tap adds them */
+function renderWho(){
+  const box = document.getElementById('sheetWho');
+  const L = S.cloud && S.cloud.last;
+  if (!L || !L.answered){ box.innerHTML = ''; return; }
+  const row = (label, names, cls) => names.length
+    ? `<div class="rulerow"><span class="rt${cls}">${label}</span><span class="rn">${names.map(esc).join(' · ')}</span></div>`
+    : '';
+  box.innerHTML = row('playing', L.playing || [], ' apart') +
+                  row('watching', L.watching || [], '') +
+                  row('out', L.out || [], '');
+}
+
 function renderGuests(){
   const box = document.getElementById('sheetGuests');
   const list = (S.cloud && S.cloud.guests) || [];
@@ -1567,13 +1609,15 @@ function leaveDemo(){
   try { localStorage.removeItem(DEMO_KEY); } catch(e){}
   const real = S.cloud.real || {};
   S.cloud.proj = real.proj || ''; S.cloud.key = real.key || '';
-  S.cloud.sheet = ''; S.cloud.guests = [];
+  S.cloud.sheet = real.sheet || ''; S.cloud.week = real.week || '';
+  S.cloud.guests = []; S.cloud.last = null;
   sheetMsg(cloudOK() ? 'Back to your real sheet.' : 'Back to normal. Put the project id and key in when you are ready.');
   render(); save();
 }
 function enterDemo(){
-  S.cloud.real = { proj:S.cloud.proj, key:S.cloud.key };
-  S.cloud.proj = 'demo'; S.cloud.key = 'demo'; S.cloud.sheet = ''; S.cloud.guests = [];
+  S.cloud.real = { proj:S.cloud.proj, key:S.cloud.key, sheet:S.cloud.sheet, week:S.cloud.week };
+  S.cloud.proj = 'demo'; S.cloud.key = 'demo';
+  S.cloud.sheet = ''; S.cloud.week = ''; S.cloud.guests = []; S.cloud.last = null;
   sheetMsg('Practice mode. Open a sheet, copy the link, and open it in another tab to play both sides.');
   render(); save();
 }
@@ -1652,6 +1696,12 @@ document.getElementById('sheetEach').onclick = async e => {
   setTimeout(() => { e.currentTarget.textContent = 'Copy a link for each player'; }, 2500);
 };
 
+document.getElementById('freshBtn').onclick = () => {
+  const n = ((S.cloud.last || {}).answered || 0);
+  ask(`Start a fresh week? ${n ? n + ' answer(s) so far are cleared' : 'The count starts again'} and everyone goes back to not coming. Links you have already sent keep working.`,
+      freshWeek);
+};
+
 document.getElementById('sheetNew').onclick = sheetNew;
 document.getElementById('sheetPull').onclick = () => sheetPull(false);
 document.getElementById('sheetCopy').onclick = async e => {
@@ -1660,8 +1710,12 @@ document.getElementById('sheetCopy').onclick = async e => {
   try {
     await navigator.clipboard.writeText(link);
     e.currentTarget.textContent = 'Copied';
-    if (linkWarning()) sheetMsg(linkWarning(), true);
-  } catch(err){ sheetMsg(link); }
+    sheetMsg(linkWarning() || 'Link copied. Paste it into the group chat.', !!linkWarning());
+  } catch(err){
+    const box = document.getElementById('shareText');
+    box.hidden = false; box.value = link; box.focus(); box.select();
+    sheetMsg('Your browser would not let the app copy. The link is in the box below — select it and copy by hand.', true);
+  }
   setTimeout(() => { e.currentTarget.textContent = 'Copy the link'; }, 2000);
 };
 document.getElementById('sheetSetupBtn').onclick = () => {

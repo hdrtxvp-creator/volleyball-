@@ -45,7 +45,13 @@ h1 em{color:var(--ball);font-style:normal;display:block}
 }
 .btn.yes.on{background:var(--ball);border-color:var(--ball);color:#0A1A2C}
 .btn.watch.on{background:rgba(242,194,48,.18);border-color:rgba(242,194,48,.5);color:var(--ball)}
-.btn.no.on{background:rgba(232,237,242,.14);border-color:rgba(232,237,242,.3);color:var(--chalk)}
+.btn.no.on{background:rgba(226,75,74,.22);border-color:#E24B4A;color:#F09595}
+.done{
+  background:rgba(242,194,48,.12);border:1px solid rgba(242,194,48,.45);border-radius:12px;
+  padding:14px;margin:16px 0 0;font-size:15px;color:var(--chalk)
+}
+.done b{color:var(--ball)}
+.done span{display:block;margin-top:6px;font-size:13px;color:var(--slate)}
 .addbox{background:var(--panel);border-radius:12px;padding:14px;margin-top:20px}
 .addbox p{margin:0 0 10px;font-size:13px;color:#B9C6D6}
 .addbox .go{
@@ -81,6 +87,7 @@ h1 em{color:var(--ball);font-style:normal;display:block}
   <button class="go" id="newWatch" style="background:transparent;border:1px solid rgba(242,194,48,.5);color:var(--ball)">Add me — just watching</button>
 </div>
 
+<p class="done" id="done" hidden></p>
 <p class="note" id="note"></p>
 
 <script>
@@ -221,9 +228,11 @@ async function load(quiet){
       if (!names.includes(r.name)) names.push(r.name);   // people who added themselves
     });
     if (solo() && !names.includes(ONLY)) names.push(ONLY);
-    noteEl.textContent = solo()
-      ? 'If you do not tap anything, you are counted as not coming.'
-      : 'You can change your answer any time before the teams go out.';
+    if (document.getElementById('done').hidden){
+      noteEl.textContent = solo()
+        ? 'If you do not tap anything, you are counted as not coming.'
+        : 'You can change your answer any time before the teams go out.';
+    }
     render();
   } catch(err){
     if (!quiet) noteEl.innerHTML = '<span class="bad">Could not reach the sheet.</span> Check your signal and pull down to reload.';
@@ -238,9 +247,14 @@ async function answer(name, kind){
   render();
   try {
     await api().putSignup(SHEET, week, name, coming, watch);
-    noteEl.textContent = watch ? `Noted — you're watching.`
-      : coming ? `Got it — you're playing.` : `Noted — you're out this week.`;
+    const word = watch ? 'watching' : coming ? 'playing' : 'not coming';
+    const d = document.getElementById('done');
+    d.hidden = false;
+    d.innerHTML = `Saved — you are down as <b>${esc(word)}</b>.` +
+      `<span>Nothing else to do, you can close this page. Changed your mind? Tap another button any time before the teams go out.</span>`;
+    noteEl.textContent = '';
   } catch(err){
+    document.getElementById('done').hidden = true;
     noteEl.innerHTML = '<span class="bad">That did not save.</span> Tap it again when you have signal.';
     answers[name] = hadA; watching[name] = hadW;
   }
