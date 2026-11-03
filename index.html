@@ -212,6 +212,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 }
 .askbox p{margin:0 0 14px;font-size:15px;line-height:1.5;color:var(--chalk)}
 .askbox .yes{border-color:var(--ball);color:var(--ball)}
+.ghost.notyet{opacity:.45}
 .rulerow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(232,237,242,.07)}
 .rulerow .rt{
   flex:none;font-family:'Archivo',system-ui,sans-serif;font-size:10px;letter-spacing:.04em;text-transform:uppercase;
@@ -354,6 +355,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <div class="fitrow">
     <button class="ghost" id="demoBtn">Try it without setting anything up</button>
   </div>
+  <p class="spots warn" id="sheetNext" hidden></p>
   <p class="spots warn" id="sheetWarn" hidden></p>
   <p class="spots" id="sheetStatus"></p>
   <div id="sheetGuests"></div>
@@ -941,6 +943,16 @@ function render(){
   document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
   document.getElementById('sheetSetupBtn').hidden = inDemo();
   if (inDemo()) document.getElementById('sheetSetup').hidden = true;
+  const nextEl = document.getElementById('sheetNext');
+  const nextTxt = nextStep();
+  nextEl.hidden = !nextTxt;
+  nextEl.textContent = nextTxt;
+  // the buttons that cannot work yet look like it
+  ['sheetCopy','sheetEach','sheetSendList'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('notyet', !sheetLink());
+  });
+
   const warnEl = document.getElementById('sheetWarn');
   const warnTxt = linkWarning();
   warnEl.hidden = !warnTxt;
@@ -1369,6 +1381,12 @@ const inDemo = () => S.cloud && S.cloud.url === 'demo';
 const localOnly = () => location.protocol === 'file:' ||
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 /* Why a link cannot reach anyone else yet, or '' when it can. */
+/* The one thing to do next, in order. '' once links can actually be made. */
+function nextStep(){
+  if (!cloudOK()) return 'Step 1 — press "Try it without setting anything up" to try the whole thing on a pretend sheet, or add your Supabase details under Sheet settings for the real one.';
+  if (!S.cloud.sheet) return 'Step 2 — press "Open this week\'s sheet". The link buttons start working once a sheet is open.';
+  return '';
+}
 function linkWarning(){
   if (location.protocol === 'file:') return 'This copy is running from a folder on this computer, so the link points at your own hard drive (file:///…) and opens nothing on anyone else\'s phone. Put the site online first, then send links from there.';
   if (localOnly()) return 'This copy is running on a local address, so the link only works on this computer. Put the site online first, then send links from there.';
@@ -1511,7 +1529,7 @@ function renderSendList(){
   const box = document.getElementById('sendList');
   if (box.hidden) return;
   if (!sheetLink()){
-    box.innerHTML = `<p class="hint">Open this week's sheet first.</p>`;
+    box.innerHTML = `<p class="spots warn" style="margin-top:8px">${esc(nextStep())}</p>`;
     return;
   }
   box.innerHTML = `<p class="hint">Tap a name: WhatsApp opens with their own link ready, and you pick who to send it to.</p>` +
@@ -1526,6 +1544,7 @@ function inviteText(name){
 }
 document.getElementById('sheetSendList').onclick = e => {
   const box = document.getElementById('sendList');
+  if (box.hidden && !sheetLink()) sheetMsg(nextStep(), true);
   box.hidden = !box.hidden;
   e.currentTarget.textContent = box.hidden ? 'Send one by one' : 'Hide the list';
   renderSendList();
@@ -1550,7 +1569,7 @@ document.getElementById('sendList').addEventListener('click', async e => {
 });
 
 document.getElementById('sheetEach').onclick = async e => {
-  if (!sheetLink()){ sheetMsg('Open this week\'s sheet first.', true); return; }
+  if (!sheetLink()){ sheetMsg(nextStep(), true); return; }
   const lines = S.roster.map(p => `${p.name}\n${personalLink(p.name)}`).join('\n\n');
   try {
     await navigator.clipboard.writeText(lines);
@@ -1569,7 +1588,7 @@ document.getElementById('sheetNew').onclick = sheetNew;
 document.getElementById('sheetPull').onclick = () => sheetPull(false);
 document.getElementById('sheetCopy').onclick = async e => {
   const link = sheetLink();
-  if (!link){ sheetMsg('Open this week\'s sheet first.', true); return; }
+  if (!link){ sheetMsg(nextStep(), true); return; }
   try {
     await navigator.clipboard.writeText(link);
     e.currentTarget.textContent = 'Copied';
