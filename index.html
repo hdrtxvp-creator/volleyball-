@@ -354,6 +354,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <div class="fitrow">
     <button class="ghost" id="demoBtn">Try it without setting anything up</button>
   </div>
+  <p class="spots warn" id="sheetWarn" hidden></p>
   <p class="spots" id="sheetStatus"></p>
   <div id="sheetGuests"></div>
   <div id="sheetSetup" hidden>
@@ -940,6 +941,10 @@ function render(){
   document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
   document.getElementById('sheetSetupBtn').hidden = inDemo();
   if (inDemo()) document.getElementById('sheetSetup').hidden = true;
+  const warnEl = document.getElementById('sheetWarn');
+  const warnTxt = linkWarning();
+  warnEl.hidden = !warnTxt;
+  warnEl.textContent = warnTxt;
   document.getElementById('sheetHint').textContent = inDemo()
     ? 'Practice mode: the sheet is pretend and lives only in this browser, so you can walk the whole thing through before setting up anything real. The link only works on this device.'
     : cloudOK()
@@ -1361,6 +1366,15 @@ function demoApi(path, opts){
   return rows;
 }
 const inDemo = () => S.cloud && S.cloud.url === 'demo';
+const localOnly = () => location.protocol === 'file:' ||
+  /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+/* Why a link cannot reach anyone else yet, or '' when it can. */
+function linkWarning(){
+  if (location.protocol === 'file:') return 'This copy is running from a folder on this computer, so the link points at your own hard drive (file:///…) and opens nothing on anyone else\'s phone. Put the site online first, then send links from there.';
+  if (localOnly()) return 'This copy is running on a local address, so the link only works on this computer. Put the site online first, then send links from there.';
+  if (inDemo()) return 'Practice mode: this link only works on this device. Nobody else can answer with it.';
+  return '';
+}
 
 async function sb(path, opts){
   if (inDemo()) return demoApi(path, opts);
@@ -1521,8 +1535,13 @@ document.getElementById('sendList').addEventListener('click', async e => {
   const p = S.roster[+((wa || cp) || {}).dataset?.[wa ? 'wa' : 'cp']];
   if (!p) return;
   if (wa){
+    if (localOnly()){
+      sheetMsg(`Not sent: ${linkWarning()}`, true);
+      return;
+    }
     window.open('https://wa.me/?text=' + encodeURIComponent(inviteText(p.name)), '_blank', 'noopener');
-    sheetMsg(`WhatsApp opened for ${p.name} — pick them from your contacts and send.`);
+    sheetMsg(`WhatsApp opened for ${p.name} — pick them from your contacts and send.`
+             + (inDemo() ? ' Practice mode, so it only works on this device.' : ''));
   } else {
     try { await navigator.clipboard.writeText(personalLink(p.name)); cp.textContent = 'copied'; }
     catch(err){ sheetMsg(personalLink(p.name)); }
@@ -1536,7 +1555,8 @@ document.getElementById('sheetEach').onclick = async e => {
   try {
     await navigator.clipboard.writeText(lines);
     e.currentTarget.textContent = `Copied ${S.roster.length}`;
-    sheetMsg(`${S.roster.length} personal links copied — paste the list somewhere and send each person their own. Each link shows only that player's name.`);
+    sheetMsg(`${S.roster.length} personal links copied — paste the list somewhere and send each person their own. Each link shows only that player's name.`
+             + (linkWarning() ? ' ' + linkWarning() : ''));
   } catch(err){
     const box = document.getElementById('shareText');
     box.hidden = false; box.value = lines; box.focus();
@@ -1550,8 +1570,11 @@ document.getElementById('sheetPull').onclick = () => sheetPull(false);
 document.getElementById('sheetCopy').onclick = async e => {
   const link = sheetLink();
   if (!link){ sheetMsg('Open this week\'s sheet first.', true); return; }
-  try { await navigator.clipboard.writeText(link); e.currentTarget.textContent = 'Copied'; }
-  catch(err){ sheetMsg(link); }
+  try {
+    await navigator.clipboard.writeText(link);
+    e.currentTarget.textContent = 'Copied';
+    if (linkWarning()) sheetMsg(linkWarning(), true);
+  } catch(err){ sheetMsg(link); }
   setTimeout(() => { e.currentTarget.textContent = 'Copy the link'; }, 2000);
 };
 document.getElementById('sheetSetupBtn').onclick = () => {
@@ -1919,9 +1942,13 @@ if ('serviceWorker' in navigator){
       });
     }).catch(() => {});
   });
+  // Reload only when an UPDATE takes over, never on the very first install,
+  // which would bounce the page out from under someone mid-tap.
   let reloading = false;
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return; reloading = true; location.reload();
+    if (!hadController || reloading) return;
+    reloading = true; location.reload();
   });
 }
 let installEvt = null;
