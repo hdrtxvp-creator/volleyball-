@@ -288,6 +288,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     </span>
   </div>
   <div id="rosterBody"></div>
+  <p class="spots warn" id="rosterNote" hidden></p>
   <p class="hint" id="rosterHint"></p>
 
   <div class="addbox">
@@ -934,6 +935,12 @@ function render(){
   } else st.hidden = true;
 
   const org = !S.guest && S.organizer === true;
+  const rn = document.getElementById('rosterNote');
+  rn.hidden = org || S.guest;
+  if (!rn.hidden) rn.textContent =
+    'Ratings are hidden on this copy, and everyone here shows as unrated — this device has never been given your roster. ' +
+    'To bring them over: on the device that has your ratings press "Copy my roster", send yourself that text, then press "Paste a roster" below and paste it. ' +
+    'The Rankings tab comes back with it.';
   if (!org && S.view === 'ranks') S.view = 'chips';
   document.getElementById('viewSeg').hidden = !org;
   document.getElementById('privRow').hidden = !org;
