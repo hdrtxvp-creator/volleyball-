@@ -348,7 +348,9 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   </div>
   <div class="fitrow">
     <button class="ghost" id="sheetEach">Copy a link for each player</button>
+    <button class="ghost" id="sheetSendList">Send one by one</button>
   </div>
+  <div id="sendList" hidden></div>
   <div class="fitrow">
     <button class="ghost" id="demoBtn">Try it without setting anything up</button>
   </div>
@@ -934,7 +936,7 @@ function render(){
   document.getElementById('privRow').hidden = !org;
   document.getElementById('expBtn').hidden = !org;
   document.getElementById('sheetSection').hidden = S.guest;
-  if (!S.guest) renderGuests();
+  if (!S.guest){ renderGuests(); renderSendList(); }
   document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
   document.getElementById('sheetSetupBtn').hidden = inDemo();
   if (inDemo()) document.getElementById('sheetSetup').hidden = true;
@@ -1484,6 +1486,45 @@ document.getElementById('status').addEventListener('click', e => {
     S.guest = false;
     render(); save();
   });
+});
+
+/* One row per player: tapping opens WhatsApp with that player's own link
+   already written, so you only pick the person and press send. */
+function renderSendList(){
+  const box = document.getElementById('sendList');
+  if (box.hidden) return;
+  if (!sheetLink()){
+    box.innerHTML = `<p class="hint">Open this week's sheet first.</p>`;
+    return;
+  }
+  box.innerHTML = `<p class="hint">Tap a name: WhatsApp opens with their own link ready, and you pick who to send it to.</p>` +
+    S.roster.map((p, i) => `<div class="rulerow">
+      <span class="rn">${esc(p.name)}</span>
+      <button class="linkish" data-wa="${i}" style="background:none;border:0">WhatsApp</button>
+      <button class="linkish" data-cp="${i}" style="background:none;border:0;color:var(--slate)">copy</button>
+    </div>`).join('');
+}
+function inviteText(name){
+  return `Volleyball this week — tap Playing, Watching or Out:\n${personalLink(name)}`;
+}
+document.getElementById('sheetSendList').onclick = e => {
+  const box = document.getElementById('sendList');
+  box.hidden = !box.hidden;
+  e.currentTarget.textContent = box.hidden ? 'Send one by one' : 'Hide the list';
+  renderSendList();
+};
+document.getElementById('sendList').addEventListener('click', async e => {
+  const wa = e.target.closest('[data-wa]'), cp = e.target.closest('[data-cp]');
+  const p = S.roster[+((wa || cp) || {}).dataset?.[wa ? 'wa' : 'cp']];
+  if (!p) return;
+  if (wa){
+    window.open('https://wa.me/?text=' + encodeURIComponent(inviteText(p.name)), '_blank', 'noopener');
+    sheetMsg(`WhatsApp opened for ${p.name} — pick them from your contacts and send.`);
+  } else {
+    try { await navigator.clipboard.writeText(personalLink(p.name)); cp.textContent = 'copied'; }
+    catch(err){ sheetMsg(personalLink(p.name)); }
+    setTimeout(() => { cp.textContent = 'copy'; }, 1500);
+  }
 });
 
 document.getElementById('sheetEach').onclick = async e => {
