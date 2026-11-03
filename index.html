@@ -971,7 +971,7 @@ function render(){
     ? (S.cloud.sheet
         ? 'Send the link to the group once a week. Everyone taps their own name, and the answers drop in here on their own. Anyone not on the roster can add themselves, and they show up above for you to accept.'
         : 'Press "Open this week\'s sheet", then copy the link into the group chat. Everyone starts as not coming until they tap Coming.')
-    : 'Not set up yet. Press "Sheet settings" and paste in the Supabase project URL and anon key.';
+    : 'Not set up yet. Press "Sheet settings" and paste in your Firebase project ID and web API key.';
   document.getElementById('dlBtn').hidden = !org;
   const pc = document.getElementById('privChk');
   pc.checked = !!S.hideRanks;
