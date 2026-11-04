@@ -35,6 +35,7 @@ body{
   font-family:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
   font-size:16px;line-height:1.5;
   -webkit-text-size-adjust:100%;
+  padding-bottom:calc(76px + env(safe-area-inset-bottom));
 }
 .wrap{max-width:660px;margin:0 auto;padding:22px 16px 64px}
 .mono{font-family:'IBM Plex Mono',ui-monospace,Menlo,monospace}
@@ -59,6 +60,44 @@ h1 em{font-style:normal;color:var(--ball);display:block}
 section{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
 .label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px;color:var(--slate);letter-spacing:.04em}
 .label b{color:var(--chalk);font-weight:600}
+
+/* ---------- the three tabs ---------- */
+.pane[hidden]{display:none!important}
+.tabs{
+  position:fixed;left:0;right:0;bottom:0;z-index:60;
+  display:grid;grid-template-columns:repeat(3,1fr);
+  background:var(--panel);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom)
+}
+.tabs button{
+  appearance:none;background:none;border:0;cursor:pointer;font:inherit;
+  font-size:12px;font-weight:600;color:var(--slate);
+  min-height:58px;padding:8px 4px 10px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px
+}
+.tabs button[aria-current="page"]{color:var(--ball);box-shadow:inset 0 2px 0 var(--ball)}
+.tabs button .pip{
+  min-width:18px;height:18px;border-radius:999px;background:var(--ball);color:#0A1A2C;
+  font-size:11px;font-weight:700;line-height:18px;padding:0 5px;margin-left:4px
+}
+.tabs svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.tabrow{display:flex;align-items:center;gap:0}
+
+/* a setup row that opens in place */
+details.fold{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-bottom:10px}
+details.fold>summary{
+  list-style:none;cursor:pointer;padding:16px;display:flex;align-items:center;
+  justify-content:space-between;gap:12px;font-size:16px;font-weight:600;color:var(--chalk);
+  min-height:56px;box-sizing:border-box
+}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold>summary .sub{display:block;font-size:13px;font-weight:400;color:var(--slate);margin-top:2px}
+details.fold>summary .chev{flex:none;color:var(--slate);transition:transform .15s}
+details.fold[open]>summary .chev{transform:rotate(90deg)}
+details.fold>:not(summary){background:none;border:0;border-radius:0;margin:0;padding:0 16px 16px}
+details.fold>:not(summary)>.label:first-child,
+details.fold>:not(summary)>p:first-child{display:none}
 
 /* segmented control */
 .seg{display:inline-flex;background:var(--ink);border:1px solid var(--line);border-radius:999px;padding:2px}
@@ -279,7 +318,12 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 <p class="status" id="status" hidden></p>
 <p class="lede">Splits everyone who is playing into even sides, spreads the strong players around, and rotates which side waits out the first game.</p>
 
-<section>
+<div class="pane" id="paneWeek"></div>
+<div class="pane" id="panePlayers" hidden></div>
+<div class="pane" id="paneSetup" hidden></div>
+
+
+<section id="rosterSection">
   <div class="label">
     <span>Roster <b id="rosterCount"></b></span>
     <span class="seg" id="viewSeg">
@@ -298,7 +342,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <p class="hint" id="unlockHint">Type the code and this device gets the roster and everyone&#39;s rating, kept in step with the one that set it.</p>
   </div>
 
-  <div class="addbox">
+  <div class="addbox" id="addBox">
     <p>Add players</p>
     <div class="add" id="singleAdd">
       <input type="text" id="nameInput" placeholder="Player name" autocomplete="off">
@@ -311,7 +355,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <button class="switch" id="switchMode">Add several at once</button>
   </div>
 
-  <div class="addbox">
+  <div class="addbox" id="comingBox">
     <p>Who's coming this week</p>
     <div class="fitrow" style="margin-top:0">
       <button class="ghost" id="allIn">Everyone in</button>
@@ -325,7 +369,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <p class="hint" id="comingHint">Paste the replies out of WhatsApp and the app marks exactly those players as coming, everyone else as not.</p>
   </div>
 
-  <div class="addbox">
+  <div class="addbox" id="backupBox">
     <p>Roster backup</p>
     <div class="fitrow" style="margin-top:0">
       <button class="ghost" id="expBtn">Copy my roster</button>
@@ -453,11 +497,26 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 
 <button class="pick" id="pickBtn">Pick this week's sides</button>
 <p class="note" id="note" hidden></p>
-<div class="foot">
+<div class="foot" id="footRow">
   <button class="ghost" id="undoBtn">Undo last pick</button>
   <button class="ghost" id="resetBtn">Start a new season</button>
 </div>
 
+
+<nav class="tabs" aria-label="Main">
+  <button type="button" data-tab="week" aria-current="page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+    <span class="tabrow">This week<span class="pip" id="weekPip" hidden>0</span></span>
+  </button>
+  <button type="button" data-tab="players">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5"></path><path d="M16 6.2a3 3 0 0 1 0 5.6M17.5 14.4c2 .7 3 2.3 3 4.6"></path></svg>
+    <span class="tabrow">Players<span class="pip" id="playerPip" hidden>0</span></span>
+  </button>
+  <button type="button" data-tab="setup">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="15" cy="12" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="8" cy="17" r="1.5" fill="currentColor" stroke="none"></circle></svg>
+    Setup
+  </button>
+</nav>
 </div>
 <script>
 const KEY  = 'volleyball-picker-v2';
@@ -1023,6 +1082,8 @@ function render(){
   document.getElementById('privHint').textContent = S.guest ? '' : S.hideRanks
     ? 'Ratings show only on the Rankings tab, and team averages are hidden as well. Safe to screenshot.'
     : 'Team averages are on show above each side, and ratings appear on the chips. Player ratings never appear on the courts or in anything you send.';
+
+  tabPips();
 
   const avail = availPlayers().length;
   const sp = document.getElementById('spots');
@@ -2281,6 +2342,78 @@ try {
   }
 } catch(e){}
 
+
+/* ---------- three tabs instead of one long scroll ----------
+   The sections are not rewritten, only moved: every button, handler and id
+   stays exactly where it was, so nothing about how the app works changes. */
+const PANES = { week:'paneWeek', players:'panePlayers', setup:'paneSetup' };
+
+function foldInto(pane, node, title, sub){
+  if (!node) return;
+  const d = document.createElement('details');
+  d.className = 'fold';
+  const sum = document.createElement('summary');
+  sum.innerHTML = `<span>${esc(title)}<span class="sub">${esc(sub)}</span></span>` +
+    `<svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+    `stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
+  d.appendChild(sum);
+  d.appendChild(node);
+  pane.appendChild(d);
+}
+
+function layoutTabs(){
+  const week = document.getElementById(PANES.week);
+  const players = document.getElementById(PANES.players);
+  const setup = document.getElementById(PANES.setup);
+  if (!week || !players || !setup) return;
+  const by = id => document.getElementById(id);
+
+  // This week — the only things you touch on a normal week
+  ['sheetSection','comingBox','lineupSection','benchSection','pickBtn','note']
+    .forEach(id => { const el = by(id); if (el) week.appendChild(el); });
+
+  // Players — the long list, on its own, where it pushes nothing else down
+  if (by('rosterSection')) players.appendChild(by('rosterSection'));
+
+  // Setup — set once, folded away behind one row each
+  foldInto(setup, by('rulesSection'),  'Pairing rules',   'Who must never share a side');
+  foldInto(setup, by('sidesSection'),  'Sides and courts', 'How many teams, and hiding ratings');
+  foldInto(setup, by('backupBox'),     'Roster backup',   'Copy, download or restore your players');
+  if (by('footRow')) setup.appendChild(by('footRow'));
+
+  document.querySelector('.tabs').addEventListener('click', e => {
+    const b = e.target.closest('[data-tab]');
+    if (b) setTab(b.dataset.tab);
+  });
+  setTab(S.tab && PANES[S.tab] ? S.tab : 'week');
+}
+
+function setTab(name){
+  if (!PANES[name]) name = 'week';
+  S.tab = name;
+  Object.keys(PANES).forEach(k => {
+    const el = document.getElementById(PANES[k]);
+    if (el) el.hidden = (k !== name);
+  });
+  document.querySelectorAll('.tabs [data-tab]').forEach(b => {
+    if (b.dataset.tab === name) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
+  const lede = document.querySelector('.lede');     // only the home screen needs the blurb
+  if (lede) lede.hidden = (name !== 'week');
+  window.scrollTo(0, 0);
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+}
+
+/* A number on the Players tab when somebody has added themselves. */
+function tabPips(){
+  const g = (S.cloud && S.cloud.guests) || [];
+  const pip = document.getElementById('playerPip');
+  if (!pip) return;
+  pip.hidden = !g.length;
+  pip.textContent = g.length;
+}
+
 let fromLink = false;
 const code = /[#&]s=([^&]+)/.exec(location.hash || '');
 if (code){ try { fromLink = unpackState(code[1]); } catch(e){} }
@@ -2309,9 +2442,11 @@ if (orgLink){
   S.guest = false;
   try { history.replaceState(null, '', location.pathname); } catch(e){}
 }
+layoutTabs();
 render();
 save();
 if (orgLink && S.organizer !== true){
+  setTab('players');                 // the code box lives with the roster
   const u = document.getElementById('unlockIn');
   document.getElementById('unlockHint').textContent =
     'This link points at the group\'s sheet. Type the organiser code and the roster and ratings come down.';

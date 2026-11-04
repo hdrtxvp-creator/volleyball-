@@ -1,6 +1,6 @@
 /* Weekly Volleyball — offline service worker.
    Bump CACHE when the app changes; the old cache is dropped on activate. */
-const CACHE = 'volleyball-v19';
+const CACHE = 'volleyball-v20';
 const SHELL = [
   './',
   './index.html',
