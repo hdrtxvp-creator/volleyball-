@@ -73,7 +73,7 @@ h1 em{color:var(--ball);font-style:normal;display:block}
 <body>
 
 <h1>Weekly<em>Volleyball</em></h1>
-<p class="lede" id="lede">Find your name and say whether you are <b>playing</b>, just <b>watching</b>, or <b>out</b>. Not on the list? There is a box at the bottom to add yourself.</p>
+<p class="lede" id="lede">This is the weekly game. If you are on the roster you already have your own link &mdash; use that one. If you are not on it yet, add yourself below.</p>
 
 <p class="count" id="demoFlag" hidden style="color:var(--ball)"></p>
 <p class="count" id="count" hidden></p>
@@ -81,14 +81,16 @@ h1 em{color:var(--ball);font-style:normal;display:block}
 <div id="list"></div>
 
 <div class="addbox">
-  <p>Not on the list? Add yourself — whoever runs the group will see it and add you to the roster.</p>
+  <p id="addLede">Set this up once. Put your name in and tap one — this phone remembers you, and from next week it is a single tap.</p>
   <input class="search" id="newName" placeholder="Your name" autocomplete="name" style="margin:0">
-  <button class="go" id="newPlay">Add me — playing</button>
-  <button class="go" id="newWatch" style="background:transparent;border:1px solid rgba(242,194,48,.5);color:var(--ball)">Add me — just watching</button>
+  <button class="go" id="newPlay">That&#39;s me — I&#39;m playing</button>
+  <button class="go" id="newWatch" style="background:transparent;border:1px solid rgba(242,194,48,.5);color:var(--ball)">That&#39;s me — just watching</button>
+  <button class="go" id="newOut" style="background:transparent;border:1px solid rgba(226,75,74,.5);color:#F09595">That&#39;s me — I&#39;m out</button>
 </div>
 
 <p class="done" id="done" hidden></p>
 <p class="note" id="note"></p>
+<p class="note" id="notMe" hidden></p>
 
 <script>
 const qs = new URLSearchParams(location.search);
@@ -104,8 +106,29 @@ const noteEl  = document.getElementById('note');
 const countEl = document.getElementById('count');
 const findEl  = document.getElementById('find');
 
-let names = [], week = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
-const solo = () => !!ONLY;
+let names = [], roster = [], week = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
+/* Names added from THIS device, remembered so they can change their own mind
+   after a reload. Everyone else on the roster answers from their own link. */
+const MINE = 'volleyball-added-' + (new URLSearchParams(location.search).get('s') || '');
+try { added = JSON.parse(localStorage.getItem(MINE)) || []; } catch(e){ added = []; }
+const keepMine = () => { try { localStorage.setItem(MINE, JSON.stringify(added)); } catch(e){} };
+const sameName = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+
+/* This phone remembers whose it is, so the group link only ever has to be set
+   up once. A personal link (?n=) says who it is outright and overrides it. */
+const MEKEY = 'volleyball-me-' + SHEET;
+let ME = ''; try { ME = localStorage.getItem(MEKEY) || ''; } catch(e){}
+const setMe = n => { ME = n; try { n ? localStorage.setItem(MEKEY, n) : localStorage.removeItem(MEKEY); } catch(e){} };
+
+/* A tag for this phone, so a name claimed here cannot be answered for elsewhere. */
+let DEV = ''; try { DEV = localStorage.getItem('volleyball-phone') || ''; } catch(e){}
+if (!DEV){
+  DEV = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  try { localStorage.setItem('volleyball-phone', DEV); } catch(e){}
+}
+
+const who  = () => ONLY || ME;
+const solo = () => !!who();
 
 
 const DEMO_KEY = 'volleyball-demo-sheet';
@@ -117,11 +140,14 @@ function demoStore(){
   const write = db => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){} };
   return {
     async getSheet(sheet){ return read().sheets[sheet] || null; },
-    async putSignup(sheet, week, name, coming, watch){
+    async putSignup(sheet, week, name, coming, watch, by, clash){
       const db = read(); const k = sheet + '|' + week;
       db.signups[k] = db.signups[k] || {};
-      db.signups[k][name] = { name, coming, watch };
+      db.signups[k][name] = { name, coming, watch, by: by || '', clash: !!clash };
       write(db);
+    },
+    async getSignup(sheet, week, name){
+      return (read().signups[sheet + '|' + week] || {})[name] || null;
     },
     async listSignups(sheet, week){ return Object.values(read().signups[sheet + '|' + week] || {}); }
   };
@@ -149,14 +175,24 @@ function firestore(proj, key){
                  names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
       } catch(e){ if (e.status === 404) return null; throw e; }
     },
-    async putSignup(sheet, week, name, coming, watch){
+    async putSignup(sheet, week, name, coming, watch, by, clash){
       await call(at(`${weekPath(sheet, week)}/${b64url(name)}`), {
         method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ fields: {
           name: str(name), coming: bool(coming), watch: bool(watch),
-          updated: str(new Date().toISOString())
+          by: str(by || ''), clash: bool(clash), updated: str(new Date().toISOString())
         }})
       });
+    },
+    async getSignup(sheet, week, name){
+      try {
+        const d = await call(at(`${weekPath(sheet, week)}/${b64url(name)}`));
+        const f = (d || {}).fields || {};
+        if (!(f.name || {}).stringValue) return null;
+        return { name: f.name.stringValue, coming: !!(f.coming || {}).booleanValue,
+                 watch: !!(f.watch || {}).booleanValue, by: (f.by || {}).stringValue || '',
+                 clash: !!(f.clash || {}).booleanValue };
+      } catch(e){ if (e.status === 404) return null; throw e; }
     },
     async listSignups(sheet, week){
       const out = []; let token = '';
@@ -171,7 +207,9 @@ function firestore(proj, key){
           if ((f.name || {}).stringValue) out.push({
             name: f.name.stringValue,
             coming: !!(f.coming || {}).booleanValue,
-            watch:  !!(f.watch  || {}).booleanValue
+            watch:  !!(f.watch  || {}).booleanValue,
+            by:     (f.by || {}).stringValue || '',
+            clash:  !!(f.clash || {}).booleanValue
           });
         });
         token = (d || {}).nextPageToken || '';
@@ -184,25 +222,24 @@ function firestore(proj, key){
 const api = () => PROJ === 'demo' ? demoStore() : firestore(PROJ, KEY);
 
 function render(){
-  const shown = solo() ? [ONLY] : names.filter(n => !filter || n.toLowerCase().includes(filter));
-  listEl.innerHTML = shown.length
-    ? shown.map(n => {
-        const a = answers[n], w = watching[n] === true;
-        return `<div class="row${busy[n] ? ' spin' : ''}">
-          <span class="nm">${esc(n)}${added.includes(n) ? '<span class="mine">added by you</span>' : ''}</span>
-          <button class="btn yes${a === true && !w ? ' on' : ''}" data-n="${esc(n)}" data-v="play">Playing</button>
-          <button class="btn watch${w ? ' on' : ''}" data-n="${esc(n)}" data-v="watch">Watching</button>
-          <button class="btn no${a === false ? ' on' : ''}" data-n="${esc(n)}" data-v="out">Out</button>
-        </div>`;
-      }).join('')
-    : `<p class="note">No name matches that. Check the spelling, or ask whoever runs the group to add you.</p>`;
+  if (solo()){
+    const n = who(), a = answers[n], w = watching[n] === true;
+    listEl.innerHTML = `<div class="row${busy[n] ? ' spin' : ''}">
+      <span class="nm">${esc(n)}</span>
+      <button class="btn yes${a === true && !w ? ' on' : ''}" data-n="${esc(n)}" data-v="play">Playing</button>
+      <button class="btn watch${w ? ' on' : ''}" data-n="${esc(n)}" data-v="watch">Watching</button>
+      <button class="btn no${a === false ? ' on' : ''}" data-n="${esc(n)}" data-v="out">Out</button>
+    </div>`;
+    countEl.hidden = true;
+    return;
+  }
 
-  if (solo()){ countEl.hidden = true; return; }
+  // Group link: nobody's name, nobody's buttons. A count, and the box to add yourself.
+  listEl.innerHTML = '';
   const yes = names.filter(n => answers[n] === true && !watching[n]).length;
   const wat = names.filter(n => watching[n] === true).length;
-  const no  = names.filter(n => answers[n] === false).length;
   countEl.hidden = false;
-  countEl.innerHTML = `<span><b>${yes}</b> playing</span><span><b>${wat}</b> watching</span><span><b>${no}</b> out</span><span><b>${Math.max(0, names.length - yes - wat - no)}</b> quiet</span>`;
+  countEl.innerHTML = `<span><b>${yes}</b> playing</span><span><b>${wat}</b> watching</span>`;
 }
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -218,8 +255,9 @@ async function load(quiet){
       noteEl.innerHTML = '<span class="bad">No sign-up sheet here yet.</span> It opens when the teams are being sorted for the week.';
       return;
     }
-    week  = sheet.week;
-    names = (sheet.names || []).slice();
+    week   = sheet.week;
+    roster = (sheet.names || []).slice();
+    names  = roster.slice();
     const rows = await api().listSignups(SHEET, week);
     answers = {}; watching = {};
     (rows || []).forEach(r => {
@@ -227,11 +265,11 @@ async function load(quiet){
       watching[r.name] = r.watch === true;
       if (!names.includes(r.name)) names.push(r.name);   // people who added themselves
     });
-    if (solo() && !names.includes(ONLY)) names.push(ONLY);
+    if (solo() && !names.includes(who())) names.push(who());
     if (document.getElementById('done').hidden){
       noteEl.textContent = solo()
         ? 'If you do not tap anything, you are counted as not coming.'
-        : 'You can change your answer any time before the teams go out.';
+        : 'Anyone who does not answer is counted as out.';
     }
     render();
   } catch(err){
@@ -246,20 +284,32 @@ async function answer(name, kind){
   busy[name] = true;
   render();
   try {
-    await api().putSignup(SHEET, week, name, coming, watch);
+    /* Nobody is ever turned away — people change phones, clear their browser,
+       or share one between two players. If a second phone uses a name, the
+       answer still saves and the sheet simply carries a note of it, which the
+       organiser sees. */
+    const held = await api().getSignup(SHEET, week, name);
+    const clash = !!(held && ((held.by && held.by !== DEV) || held.clash));
+    await api().putSignup(SHEET, week, name, coming, watch, DEV, clash);
     const word = watch ? 'watching' : coming ? 'playing' : 'not coming';
     const d = document.getElementById('done');
     d.hidden = false;
     d.innerHTML = `Saved — you are down as <b>${esc(word)}</b>.` +
       `<span>Nothing else to do, you can close this page. Changed your mind? Tap another button any time before the teams go out.</span>`;
-    noteEl.textContent = '';
+    noteEl.innerHTML = (held && held.by && held.by !== DEV)
+      ? `<span class="bad">Heads up:</span> ${esc(name)} was already set up on another phone. ` +
+        `That is fine if you have changed phones or share one. If you meant somebody else, set this phone up again with your own name.`
+      : '';
   } catch(err){
     document.getElementById('done').hidden = true;
     noteEl.innerHTML = '<span class="bad">That did not save.</span> Tap it again when you have signal.';
     answers[name] = hadA; watching[name] = hadW;
+    delete busy[name]; render();
+    return false;
   }
   delete busy[name];
   render();
+  return true;
 }
 
 async function addMe(kind){
@@ -268,16 +318,48 @@ async function addMe(kind){
     noteEl.innerHTML = '<span class="bad">Put your name in the box first.</span>';
     return;
   }
-  const already = names.find(n => n.toLowerCase() === raw.toLowerCase());
-  const name = already || raw;
-  if (!already){ names.push(name); added.push(name); }
+  /* Match the roster spelling if they are on it, so a lower-case typing of a
+     name lands on the roster entry rather than making a second person. */
+  const onRoster = roster.find(n => sameName(n, raw));
+  const known    = names.find(n => sameName(n, raw));
+  const name     = onRoster || known || raw;
+
+  const ok = await answer(name, kind);
+  if (!ok) return;                              // only a failed save stops here
+
+  setMe(name);
+  if (!added.find(n => sameName(n, name))){ added.push(name); keepMine(); }
+  if (!names.find(n => sameName(n, name))) names.push(name);
   document.getElementById('newName').value = '';
-  filter = ''; findEl.value = '';
-  await answer(name, kind);
-  noteEl.textContent = already
-    ? `${name} was already on the list — your answer is saved.`
-    : `Thanks ${name} — you are on this week's list. You will be added to the regular roster.`;
+  const warned = noteEl.textContent;            // answer() may have left a heads-up
+  showSetup();
+  if (!warned) noteEl.textContent = onRoster
+    ? `You are set up as ${name} on this phone. Next week this page opens straight on your name.`
+    : `Thanks ${name} — you are on this week's list and set up on this phone. Whoever runs the group will add you to the roster.`;
+  else noteEl.innerHTML = warned;
 }
+
+/* Which half of the page shows: the one-time setup, or your own name. */
+function showSetup(){
+  const mine = solo();
+  document.getElementById('find').hidden = true;
+  document.querySelector('.addbox').hidden = mine;
+  const nm = document.getElementById('notMe');
+  nm.hidden = !ME || !!ONLY;
+  if (!nm.hidden) nm.innerHTML = `Not ${esc(ME)}? <b class="linkish" id="notMeBtn" style="cursor:pointer;text-decoration:underline">Set this phone up again</b>`;
+  document.getElementById('lede').innerHTML = mine
+    ? 'Hi <b>' + esc(who()) + '</b> — are you playing this week? Tap one. You can change it any time before the teams go out.'
+    : 'This is the weekly game. Set your name once below and this phone remembers it &mdash; after that it is one tap a week.';
+  render();
+}
+
+document.getElementById('notMe').addEventListener('click', e => {
+  if (!e.target.closest('#notMeBtn')) return;
+  setMe('');
+  document.getElementById('done').hidden = true;
+  noteEl.textContent = '';
+  showSetup();
+});
 
 listEl.addEventListener('click', e => {
   const b = e.target.closest('[data-n]');
@@ -285,14 +367,8 @@ listEl.addEventListener('click', e => {
 });
 document.getElementById('newPlay').onclick  = () => addMe('play');
 document.getElementById('newWatch').onclick = () => addMe('watch');
-findEl.addEventListener('input', e => { filter = e.target.value.trim().toLowerCase(); render(); });
-
-if (solo()){
-  document.getElementById('find').hidden = true;
-  document.querySelector('.addbox').hidden = true;
-  document.getElementById('lede').innerHTML =
-    'Hi <b>' + esc(ONLY) + '</b> — are you playing this week? Tap one. You can change it any time before the teams go out.';
-}
+document.getElementById('newOut').onclick   = () => addMe('out');
+showSetup();
 
 if (PROJ === 'demo'){
   const f = document.getElementById('demoFlag');

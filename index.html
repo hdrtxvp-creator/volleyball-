@@ -291,6 +291,13 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <p class="spots warn" id="rosterNote" hidden></p>
   <p class="hint" id="rosterHint"></p>
 
+  <div class="addbox" id="unlockBox" hidden>
+    <p>Organiser code</p>
+    <input type="text" id="unlockIn" placeholder="The code you were given" autocomplete="off" spellcheck="false">
+    <button class="ghost" id="unlockGo" style="width:100%;margin-top:8px">Unlock the ratings</button>
+    <p class="hint" id="unlockHint">Type the code and this device gets the roster and everyone\'s rating, kept in step with the one that set it.</p>
+  </div>
+
   <div class="addbox">
     <p>Add players</p>
     <div class="add" id="singleAdd">
@@ -361,6 +368,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   </div>
   <p class="spots warn" id="sheetNext" hidden></p>
   <p class="spots warn" id="sheetWarn" hidden></p>
+  <p class="spots warn" id="sheetClash" hidden></p>
   <p class="spots" id="sheetStatus"></p>
   <div id="sheetWho"></div>
   <div id="sheetGuests"></div>
@@ -370,6 +378,16 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <input id="sbPage" placeholder="Address of rsvp.html (leave blank if it sits beside this app)" autocomplete="off" spellcheck="false">
     <button class="ghost" id="sbSave" style="width:100%;margin-top:8px">Save these</button>
   </div>
+  <div id="codeSetup" hidden>
+    <input id="codeIn" placeholder="A code you make up — 6 characters or more" autocomplete="off" spellcheck="false">
+    <div class="fitrow">
+      <button class="ghost" id="codeSave">Save the code</button>
+      <button class="ghost" id="codeLink">Copy the helper\'s link</button>
+      <button class="ghost" id="codeOff">Turn it off</button>
+    </div>
+    <p class="hint" id="codeHint"></p>
+  </div>
+  <button class="switch" id="codeBtn">Organiser code</button>
   <button class="switch" id="sheetSetupBtn">Sheet settings</button>
   <p class="hint" id="sheetHint"></p>
 </section>
@@ -486,6 +504,7 @@ let S = { roster:[], week:0, size:6, teams:1, sizes:[6], history:[], results:[],
 /* ---------- storage: this browser, plus a link anyone can open ---------- */
 function save(){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  if (typeof vaultPush === 'function') vaultPush();
 }
 function loadLocal(){
   for (const k of [KEY, OLD]){
@@ -940,12 +959,15 @@ function render(){
   } else st.hidden = true;
 
   const org = !S.guest && S.organizer === true;
+  const canUnlock = !org && !S.guest && cloudOK() && !!(S.cloud && S.cloud.sheet) && canSeal();
+  document.getElementById('unlockBox').hidden = !canUnlock;
   const rn = document.getElementById('rosterNote');
   rn.hidden = org || S.guest;
-  if (!rn.hidden) rn.textContent =
-    'Ratings are hidden on this copy, and everyone here shows as unrated — this device has never been given your roster. ' +
-    'To bring them over: on the device that has your ratings press "Copy my roster", send yourself that text, then press "Paste a roster" below and paste it. ' +
-    'The Rankings tab comes back with it.';
+  if (!rn.hidden) rn.textContent = canUnlock
+    ? 'Ratings are hidden on this copy and everyone shows as unrated — this device has not been given the roster yet. Type the organiser code below and it comes down on its own.'
+    : 'Ratings are hidden on this copy, and everyone here shows as unrated — this device has never been given your roster. ' +
+      'To bring them over: on the device that has your ratings press "Copy my roster", send yourself that text, then press "Paste a roster" below and paste it. ' +
+      'The Rankings tab comes back with it.';
   if (!org && S.view === 'ranks') S.view = 'chips';
   document.getElementById('viewSeg').hidden = !org;
   document.getElementById('privRow').hidden = !org;
@@ -956,6 +978,17 @@ function render(){
   document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
   document.getElementById('sheetSetupBtn').hidden = inDemo();
   if (inDemo()) document.getElementById('sheetSetup').hidden = true;
+  const codeOn = !!(S.cloud && S.cloud.code);
+  document.getElementById('codeBtn').hidden = !org || !canSeal();
+  document.getElementById('codeBtn').textContent = codeOn ? 'Organiser code — on' : 'Organiser code';
+  if (!org) document.getElementById('codeSetup').hidden = true;
+  document.getElementById('codeOff').hidden = !codeOn;
+  document.getElementById('codeLink').classList.toggle('notyet', !codeOn || !S.cloud.sheet);
+  document.getElementById('codeHint').textContent = !S.cloud.sheet
+    ? 'Open this week\'s sheet first — the code travels with it.'
+    : codeOn
+    ? 'The code is on. Your roster and everyone\'s rating are sealed with it and kept with the sheet, so another phone that knows the code gets the same numbers and stays in step. Send that phone the helper\'s link, then tell them the code by voice or a separate message — not in the same one as the link.'
+    : 'Make up a code and whoever picks the sides can see your ratings on their own phone. Nobody without it can read them, not even from the database.';
   const nextEl = document.getElementById('sheetNext');
   const nextTxt = nextStep();
   nextEl.hidden = !nextTxt;
@@ -970,6 +1003,13 @@ function render(){
   const warnTxt = linkWarning();
   warnEl.hidden = !warnTxt;
   warnEl.textContent = warnTxt;
+  const two = (S.cloud && S.cloud.clash) || [];
+  const twoEl = document.getElementById('sheetClash');
+  twoEl.hidden = !two.length;
+  if (two.length) twoEl.textContent =
+    `Answered from more than one phone this week: ${two.join(', ')}. ` +
+    `Usually a new phone or two people sharing one — nothing to do. If it looks wrong, ` +
+    `tap the name above to set it yourself and the sheet will leave it alone.`;
   document.getElementById('sheetHint').textContent = inDemo()
     ? 'Practice mode: the sheet is pretend and lives only in this browser, so you can walk the whole thing through before setting up anything real. The link only works on this device.'
     : cloudOK()
@@ -1367,9 +1407,17 @@ function demoStore(){
   const write = db => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){} };
   return {
     async putSheet(sheet, week, names){
-      const db = read(); db.sheets[sheet] = { week, names }; write(db);
+      const db = read(); const was = db.sheets[sheet] || {};
+      db.sheets[sheet] = Object.assign({}, was, { week, names }); write(db);
     },
     async getSheet(sheet){ return read().sheets[sheet] || null; },
+    async putVault(sheet, v){
+      const when = new Date().toISOString();
+      const db = read();
+      db.sheets[sheet] = Object.assign({}, db.sheets[sheet] || {}, { vault: Object.assign({}, v, { when }) });
+      write(db); return when;
+    },
+    async getVault(sheet){ return (read().sheets[sheet] || {}).vault || null; },
     async putSignup(sheet, week, name, coming, watch){
       const db = read(); const k = sheet + '|' + week;
       db.signups[k] = db.signups[k] || {};
@@ -1384,7 +1432,8 @@ function demoStore(){
 
 function firestore(proj, key){
   const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proj)}/databases/(default)/documents`;
-  const at = path => `${base}${path}?key=${encodeURIComponent(key)}`;
+  const at = (path, mask) => `${base}${path}?key=${encodeURIComponent(key)}` +
+    (mask ? mask.map(f => '&updateMask.fieldPaths=' + f).join('') : '');
   const str  = v => ({ stringValue: String(v) });
   const bool = v => ({ booleanValue: !!v });
   const docId = n => b64url(n);           // names hold spaces and brackets; this keeps paths clean
@@ -1401,7 +1450,7 @@ function firestore(proj, key){
     `/sheets/${encodeURIComponent(sheet)}/weeks/${encodeURIComponent(week)}/signups`;
   return {
     async putSheet(sheet, week, names){
-      await call(at(`/sheets/${encodeURIComponent(sheet)}`), {
+      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['week','names','updated']), {
         method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ fields: {
           week: str(week),
@@ -1416,6 +1465,28 @@ function firestore(proj, key){
         if (!d || !d.fields) return null;
         return { week: (d.fields.week || {}).stringValue || '',
                  names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
+      } catch(e){ if (e.status === 404) return null; throw e; }
+    },
+    /* The roster and its ratings, sealed with the organiser code before it ever
+       leaves the phone. Stored on the same sheet document, so the database rules
+       do not change. Without the code it is a wall of letters. */
+    async putVault(sheet, v){
+      const when = new Date().toISOString();
+      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['vault','vsalt','viv','vwhen']), {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fields: {
+          vault: str(v.vault), vsalt: str(v.vsalt), viv: str(v.viv), vwhen: str(when)
+        }})
+      });
+      return when;
+    },
+    async getVault(sheet){
+      try {
+        const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
+        const f = (d || {}).fields || {};
+        if (!(f.vault || {}).stringValue) return null;
+        return { vault: f.vault.stringValue, vsalt: (f.vsalt || {}).stringValue,
+                 viv: (f.viv || {}).stringValue, when: (f.vwhen || {}).stringValue || '' };
       } catch(e){ if (e.status === 404) return null; throw e; }
     },
     async putSignup(sheet, week, name, coming, watch){
@@ -1440,7 +1511,8 @@ function firestore(proj, key){
           if ((f.name || {}).stringValue) out.push({
             name: f.name.stringValue,
             coming: !!(f.coming || {}).booleanValue,
-            watch:  !!(f.watch  || {}).booleanValue
+            watch:  !!(f.watch  || {}).booleanValue,
+            clash:  !!(f.clash  || {}).booleanValue
           });
         });
         token = (d || {}).nextPageToken || '';
@@ -1448,6 +1520,79 @@ function firestore(proj, key){
       return out;
     }
   };
+}
+
+/* ---------- the organiser code ----------
+   One code, set on your phone. It locks the roster and its ratings into a block
+   of letters that is stored with the sheet. Another device types the same code
+   and gets the roster back. Type the wrong code and nothing comes out — the
+   ratings are not merely hidden on screen, they are unreadable without it. */
+const TE = new TextEncoder(), TD = new TextDecoder();
+const toB64 = b => btoa(String.fromCharCode.apply(null, new Uint8Array(b)));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const canSeal = () => !!(window.crypto && crypto.subtle);
+
+async function codeKey(code, salt){
+  const base = await crypto.subtle.importKey('raw', TE.encode(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt, iterations:150000, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, false, ['encrypt','decrypt']);
+}
+async function sealRoster(code){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv   = crypto.getRandomValues(new Uint8Array(12));
+  const key  = await codeKey(code, salt);
+  const body = JSON.stringify({
+    r: S.roster.map(p => [p.name, p.rank, p.games || 0, p.sits || 0, p.wins || 0, p.losses || 0]),
+    apart: S.apart, together: S.together
+  });
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, TE.encode(body));
+  return { vault: toB64(ct), vsalt: toB64(salt), viv: toB64(iv) };
+}
+async function openRoster(code, v){
+  const key = await codeKey(code, fromB64(v.vsalt));
+  const pt  = await crypto.subtle.decrypt({ name:'AES-GCM', iv: fromB64(v.viv) }, key, fromB64(v.vault));
+  return JSON.parse(TD.decode(pt));
+}
+
+/* Push the roster up whenever it changes, quietly, if a code is set. */
+let pushTimer = null, pushing = false;
+function vaultPush(){
+  if (!S.cloud || !S.cloud.code || !S.cloud.sheet || !cloudOK() || !canSeal()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    if (pushing) return;
+    pushing = true;
+    try {
+      const when = await sheetApi().putVault(S.cloud.sheet, await sealRoster(S.cloud.code));
+      S.cloud.synced = when; S.cloud.behind = false;
+    } catch(e){
+      S.cloud.behind = true;          // this phone is ahead of the database
+    }
+    pushing = false;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  }, 1200);
+}
+
+async function vaultPull(code){
+  const v = await sheetApi().getVault(S.cloud.sheet);
+  if (!v) { const e = new Error('none'); e.none = true; throw e; }
+  const data = await openRoster(code, v);      // throws if the code is wrong
+  const byName = {};
+  S.roster.forEach(p => { byName[p.name] = p; });
+  S.roster = data.r.map(a => {
+    const had = byName[a[0]] || {};
+    return { name:a[0], rank:a[1], games:a[2], sits:a[3], wins:a[4], losses:a[5],
+             available: had.available === undefined ? false : had.available,
+             lastWeek: had.lastWeek === undefined ? null : had.lastWeek };
+  });
+  if (Array.isArray(data.apart))    S.apart = data.apart;
+  if (Array.isArray(data.together)) S.together = data.together;
+  S.cloud.code = code;
+  S.cloud.synced = v.when || new Date().toISOString();
+  S.cloud.behind = false;
+  S.organizer = true; S.guest = false;
+  return S.roster.length;
 }
 
 const inDemo = () => S.cloud && S.cloud.proj === 'demo';
@@ -1488,7 +1633,7 @@ async function freshWeek(){
   S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
   S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
   S.roster.forEach(p => { p.available = false; delete p.manual; });
-  S.cloud.guests = []; S.cloud.last = null;
+  S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = [];
   sheetMsg('Opening the sheet…');
   try {
     await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
@@ -1527,8 +1672,9 @@ async function sheetPull(quiet){
   try {
     const rows = await sheetApi().listSignups(S.cloud.sheet, S.cloud.week);
     let yes = 0, watch = 0, no = 0, held = 0;
-    const guests = [], answered = new Set();
+    const guests = [], answered = new Set(), twoPhones = [];
     (rows || []).forEach(r => {
+      if (r.clash) twoPhones.push(r.name);
       const playing = r.coming === true && r.watch !== true;
       const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
       if (!p){ guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true }); return; }
@@ -1546,6 +1692,7 @@ async function sheetPull(quiet){
       p.available = false;
     });
     S.cloud.guests = guests;
+    S.cloud.clash = twoPhones;
     S.cloud.last = {
       answered: yes + watch + no,
       playing:  S.roster.filter(p => answered.has(p.name) && p.available).map(p => p.name),
@@ -1681,19 +1828,21 @@ document.getElementById('sendList').addEventListener('click', async e => {
 });
 
 document.getElementById('sheetEach').onclick = async e => {
+  const btn = e.currentTarget;            // the event's own pointer goes stale at the first await
   if (!sheetLink()){ sheetMsg(nextStep(), true); return; }
   const lines = S.roster.map(p => `${p.name}\n${personalLink(p.name)}`).join('\n\n');
   try {
     await navigator.clipboard.writeText(lines);
-    e.currentTarget.textContent = `Copied ${S.roster.length}`;
+    btn.textContent = `Copied ${S.roster.length}`;
     sheetMsg(`${S.roster.length} personal links copied — paste the list somewhere and send each person their own. Each link shows only that player's name.`
              + (linkWarning() ? ' ' + linkWarning() : ''));
   } catch(err){
     const box = document.getElementById('shareText');
     box.hidden = false; box.value = lines; box.focus();
-    e.currentTarget.textContent = 'Copy it from the box';
+    btn.textContent = 'Copy it from the box';
+    sheetMsg('Your browser would not let the app copy. The list is in the box above — select it all and copy by hand.', true);
   }
-  setTimeout(() => { e.currentTarget.textContent = 'Copy a link for each player'; }, 2500);
+  setTimeout(() => { btn.textContent = 'Copy a link for each player'; }, 2500);
 };
 
 document.getElementById('freshBtn').onclick = () => {
@@ -1705,18 +1854,19 @@ document.getElementById('freshBtn').onclick = () => {
 document.getElementById('sheetNew').onclick = sheetNew;
 document.getElementById('sheetPull').onclick = () => sheetPull(false);
 document.getElementById('sheetCopy').onclick = async e => {
+  const btn = e.currentTarget;
   const link = sheetLink();
   if (!link){ sheetMsg(nextStep(), true); return; }
   try {
     await navigator.clipboard.writeText(link);
-    e.currentTarget.textContent = 'Copied';
+    btn.textContent = 'Copied';
     sheetMsg(linkWarning() || 'Link copied. Paste it into the group chat.', !!linkWarning());
   } catch(err){
     const box = document.getElementById('shareText');
     box.hidden = false; box.value = link; box.focus(); box.select();
     sheetMsg('Your browser would not let the app copy. The link is in the box below — select it and copy by hand.', true);
   }
-  setTimeout(() => { e.currentTarget.textContent = 'Copy the link'; }, 2000);
+  setTimeout(() => { btn.textContent = 'Copy the link'; }, 2000);
 };
 document.getElementById('sheetSetupBtn').onclick = () => {
   const box = document.getElementById('sheetSetup');
@@ -1737,6 +1887,78 @@ document.getElementById('sbSave').onclick = () => {
   document.getElementById('sheetSetup').hidden = true;
   sheetMsg(cloudOK() ? 'Saved. Open this week\'s sheet when you are ready.' : 'Both the project id and the key are needed.', !cloudOK());
   render(); save();
+};
+
+/* ---------- the organiser code, the buttons ---------- */
+function helperLink(){
+  if (!cloudOK() || !S.cloud.sheet) return '';
+  const pack = b64url(JSON.stringify({ p:S.cloud.proj, k:S.cloud.key, s:S.cloud.sheet, g:S.cloud.page || '' }));
+  return location.origin + location.pathname + '?org=' + pack;
+}
+document.getElementById('codeBtn').onclick = () => {
+  const box = document.getElementById('codeSetup');
+  box.hidden = !box.hidden;
+  if (!box.hidden) document.getElementById('codeIn').value = (S.cloud && S.cloud.code) || '';
+};
+document.getElementById('codeSave').onclick = async () => {
+  const v = document.getElementById('codeIn').value.trim();
+  const hint = document.getElementById('codeHint');
+  if (v.length < 6){ hint.textContent = 'Make it at least six characters — a short word and a number is plenty.'; return; }
+  if (!S.cloud.sheet){ hint.textContent = 'Open this week\'s sheet first.'; return; }
+  S.cloud.code = v;
+  hint.textContent = 'Sealing the roster…';
+  try {
+    await sheetApi().putVault(S.cloud.sheet, await sealRoster(v));
+    render(); save();
+    hint.textContent = 'Saved. Press "Copy the helper\'s link", send that to whoever picks the sides, and tell them the code in a separate message.';
+  } catch(err){
+    S.cloud.code = '';
+    hint.textContent = 'That did not reach the database. Check your signal and try again.';
+  }
+};
+document.getElementById('codeLink').onclick = async e => {
+  const btn = e.currentTarget;
+  const link = helperLink();
+  const hint = document.getElementById('codeHint');
+  if (!link || !S.cloud.code){ hint.textContent = 'Save a code first.'; return; }
+  if (localOnly()){ hint.textContent = linkWarning(); return; }
+  try {
+    await navigator.clipboard.writeText(link);
+    btn.textContent = 'Copied';
+    hint.textContent = 'Link copied. Send the code in a different message — the two together in one place is the same as no code at all.';
+  } catch(err){
+    const box = document.getElementById('shareText');
+    box.hidden = false; box.value = link; box.focus(); box.select();
+    hint.textContent = 'Your browser would not let the app copy. The link is in the box above — select it and copy by hand.';
+  }
+  setTimeout(() => { btn.textContent = 'Copy the helper\'s link'; }, 2000);
+};
+document.getElementById('codeOff').onclick = () => {
+  ask('Turn the organiser code off? Phones that already unlocked keep the roster they have, but they stop getting your changes.', () => {
+    S.cloud.code = '';
+    document.getElementById('codeHint').textContent = 'Off. The sealed roster stays in the database until the next time you set a code, and nothing can read it.';
+    render(); save();
+  });
+};
+document.getElementById('unlockGo').onclick = async e => {
+  const btn = e.currentTarget;
+  const v = document.getElementById('unlockIn').value.trim();
+  const hint = document.getElementById('unlockHint');
+  if (!v){ hint.textContent = 'Type the code first.'; return; }
+  btn.disabled = true;
+  hint.textContent = 'Checking…';
+  try {
+    const n = await vaultPull(v);
+    document.getElementById('unlockIn').value = '';
+    hint.textContent = '';
+    render(); save();
+    sheetMsg(n + ' players came down with their ratings. This device is in step now.');
+  } catch(err){
+    hint.textContent = err && err.none
+      ? 'No roster has been sealed on this sheet yet. Ask them to set the code on their own phone first.'
+      : 'That code does not open it. Check it and try again.';
+  }
+  btn.disabled = false;
 };
 
 /* every twenty seconds, so answers land while you watch */
@@ -2049,6 +2271,16 @@ document.getElementById('resetBtn').onclick = () => {
   });
 };
 
+/* The helper\'s link: where the sheet is, so the code has something to open. */
+let orgLink = null;
+try {
+  const raw = new URLSearchParams(location.search).get('org');
+  if (raw){
+    const d = JSON.parse(decodeURIComponent(escape(atob(raw.replace(/-/g,'+').replace(/_/g,'/')))));
+    if (d && d.p && d.k && d.s) orgLink = d;
+  }
+} catch(e){}
+
 let fromLink = false;
 const code = /[#&]s=([^&]+)/.exec(location.hash || '');
 if (code){ try { fromLink = unpackState(code[1]); } catch(e){} }
@@ -2070,8 +2302,36 @@ if (!fromLink){
   }
 }
 if (!S.roster.length){ importRoster(SEED); if (typeof S.organizer !== 'boolean') S.organizer = false; }
+if (orgLink){
+  S.cloud = S.cloud || {};
+  S.cloud.proj = orgLink.p; S.cloud.key = orgLink.k; S.cloud.sheet = orgLink.s;
+  if (orgLink.g) S.cloud.page = orgLink.g;
+  S.guest = false;
+  try { history.replaceState(null, '', location.pathname); } catch(e){}
+}
 render();
 save();
+if (orgLink && S.organizer !== true){
+  const u = document.getElementById('unlockIn');
+  document.getElementById('unlockHint').textContent =
+    'This link points at the group\'s sheet. Type the organiser code and the roster and ratings come down.';
+  if (u) setTimeout(() => u.focus(), 200);
+}
+/* A device that already knows the code catches up on the way in — but only if
+   the database is genuinely ahead of it. A phone whose own last change never
+   made it up stays put and pushes instead, so nobody\'s edits get undone. */
+if (S.organizer === true && S.cloud && S.cloud.code && S.cloud.sheet && cloudOK() && canSeal()){
+  (async () => {
+    try {
+      if (S.cloud.behind){ vaultPush(); return; }
+      const v = await sheetApi().getVault(S.cloud.sheet);
+      if (!v || !v.when || v.when === S.cloud.synced) return;
+      if (S.cloud.synced && v.when < S.cloud.synced) return;
+      await vaultPull(S.cloud.code);
+      render(); save();
+    } catch(e){ /* nothing to catch up to, or no signal */ }
+  })();
+}
 if (fromLink){ try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} }
 </script>
 <script>

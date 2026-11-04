@@ -8,7 +8,12 @@
 //
 // What these allow: anyone with the sign-up link can read the week's names and
 // write their own yes/no. Nothing can be deleted, and no other collection in
-// the project is reachable. Ratings never go near this database.
+// the project is reachable.
+//
+// If you set an organiser code, the roster and its ratings are also kept here,
+// sealed with that code before they leave your phone. Anyone can fetch that
+// block; without the code it is unreadable. These rules do not need changing
+// for it — it rides on the sheet document that is already here.
 
 rules_version = '2';
 service cloud.firestore {
