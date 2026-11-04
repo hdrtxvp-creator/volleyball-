@@ -622,6 +622,7 @@ function tidy(){
   if (!Array.isArray(S.apart)) S.apart = [['Mahesh', 'Lalu', 'Harish']];
   if (!Array.isArray(S.together)) S.together = [];
   if (!S.cloud || typeof S.cloud !== 'object') S.cloud = { proj:'', key:'', page:'', sheet:'', week:'' };
+  if (!Array.isArray(S.cloud.ignore)) S.cloud.ignore = [];
   if (S.cloud.url !== undefined){ delete S.cloud.url; }   // older copies kept a Supabase address
   S.apart = S.apart.filter(g => Array.isArray(g) && g.length > 1);
   S.together = S.together.filter(g => Array.isArray(g) && g.length > 1);
@@ -1694,7 +1695,7 @@ async function freshWeek(){
   S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
   S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
   S.roster.forEach(p => { p.available = false; delete p.manual; });
-  S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = [];
+  S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = []; S.cloud.ignore = [];
   sheetMsg('Opening the sheet…');
   try {
     await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
@@ -1738,7 +1739,12 @@ async function sheetPull(quiet){
       if (r.clash) twoPhones.push(r.name);
       const playing = r.coming === true && r.watch !== true;
       const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
-      if (!p){ guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true }); return; }
+      if (!p){
+        // × means ignore for the rest of this week, not just until the next check
+        const skipped = (S.cloud.ignore || []).some(n => n.toLowerCase() === String(r.name).toLowerCase());
+        if (!skipped) guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true });
+        return;
+      }
       answered.add(p.name);
       if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
       if (p.manual) { held++; return; }            // you overruled the sheet for this one
@@ -1805,9 +1811,15 @@ document.getElementById('sheetGuests').addEventListener('click', e => {
                       available: g.coming && !g.watch, rank:3 });
     }
     S.cloud.guests = list.filter((_, i) => i !== +add.dataset.guest);
+    S.cloud.ignore = (S.cloud.ignore || []).filter(n => n.toLowerCase() !== g.name.toLowerCase());
     sheetMsg(`${g.name} added to the roster at 3 — change the rating once you have seen them play.`);
     render(); save();
   } else if (skip){
+    const g = list[+skip.dataset.skip];
+    if (g){
+      S.cloud.ignore = (S.cloud.ignore || []).concat(g.name);
+      sheetMsg(`${g.name} ignored for this week. "Start a fresh week" gives them another go.`);
+    }
     S.cloud.guests = list.filter((_, i) => i !== +skip.dataset.skip);
     render(); save();
   }
@@ -1825,7 +1837,7 @@ function leaveDemo(){
 function enterDemo(){
   S.cloud.real = { proj:S.cloud.proj, key:S.cloud.key, sheet:S.cloud.sheet, week:S.cloud.week };
   S.cloud.proj = 'demo'; S.cloud.key = 'demo';
-  S.cloud.sheet = ''; S.cloud.week = ''; S.cloud.guests = []; S.cloud.last = null;
+  S.cloud.sheet = ''; S.cloud.week = ''; S.cloud.guests = []; S.cloud.last = null; S.cloud.ignore = [];
   sheetMsg('Practice mode. Open a sheet, copy the link, and open it in another tab to play both sides.');
   render(); save();
 }
