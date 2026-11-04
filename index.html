@@ -61,6 +61,17 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
 .label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px;color:var(--slate);letter-spacing:.04em}
 .label b{color:var(--chalk);font-weight:600}
 
+.newtag{
+  font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:#0A1A2C;background:var(--ball);border-radius:999px;padding:2px 6px;margin-left:2px
+}
+.rollover{
+  background:rgba(242,194,48,.10);border:1px solid rgba(242,194,48,.45);
+  border-radius:12px;padding:14px;margin:0 0 12px
+}
+.rollover p{margin:0 0 10px;font-size:14px;color:var(--chalk)}
+.rollover button{width:100%}
+
 /* ---------- the three tabs ---------- */
 .pane[hidden]{display:none!important}
 .tabs{
@@ -409,6 +420,10 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <div id="sendList" hidden></div>
   <div class="fitrow">
     <button class="ghost" id="demoBtn">Try it without setting anything up</button>
+  </div>
+  <div class="rollover" id="rollBar" hidden>
+    <p id="rollMsg"></p>
+    <button class="ghost" id="rollBtn">Start a fresh week</button>
   </div>
   <p class="spots warn" id="sheetNext" hidden></p>
   <p class="spots warn" id="sheetWarn" hidden></p>
@@ -829,6 +844,13 @@ function pickTeam(){
   chosen.forEach(p => { p.lastWeek = week; p.games++; });
   S.week = week;
 
+  /* Picking is what ends the sign-up: the sheet is told, so the link stops
+     taking answers, and the app offers a fresh week from the next day on. */
+  if (cloudOK() && S.cloud.sheet){
+    S.cloud.pickedAt = new Date().toISOString();
+    sheetApi().putPicked(S.cloud.sheet, S.cloud.pickedAt).catch(() => {});
+  }
+
   S.note = '';
   render(); save();
 }
@@ -881,6 +903,7 @@ function rosterHTML(){
   return '<div class="chips">' + S.roster.map(p => `
     <div class="chip${p.available ? '' : ' out'}" data-act="toggle" data-name="${esc(p.name)}" tabindex="0" role="button" aria-pressed="${!p.available}">
       <span>${esc(p.name)}</span>
+      ${p.isNew ? '<span class="newtag">new</span>' : ''}
       ${showRanks() ? `<span class="dots" title="Ranking ${fmtRank(p.rank)} of 5">${dots(p.rank)}</span>` : ''}
       <span class="meta">${p.games}</span>
       <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
@@ -1049,6 +1072,11 @@ function render(){
     : codeOn
     ? 'The code is on. Your roster and everyone\'s rating are sealed with it and kept with the sheet, so another phone that knows the code gets the same numbers and stays in step. Send that phone the helper\'s link, then tell them the code by voice or a separate message — not in the same one as the link.'
     : 'Make up a code and whoever picks the sides can see your ratings on their own phone. Nobody without it can read them, not even from the database.';
+  const roll = weekDone();
+  const rollBar = document.getElementById('rollBar');
+  rollBar.hidden = !roll;
+  if (roll) document.getElementById('rollMsg').textContent = roll;
+
   const nextEl = document.getElementById('sheetNext');
   const nextTxt = nextStep();
   nextEl.hidden = !nextTxt;
@@ -1209,11 +1237,15 @@ document.getElementById('rosterBody').addEventListener('click', e => {
     e.stopPropagation();
     ask(`Remove ${p.name} from the roster? Their games and rating go too.`, () => {
       S.roster = S.roster.filter(x => x !== p); justRanked = null;
+      // so the next check of the sheet does not put them straight back
+      if (S.cloud && S.cloud.sheet && !(S.cloud.ignore || []).some(n => n.toLowerCase() === p.name.toLowerCase()))
+        S.cloud.ignore = (S.cloud.ignore || []).concat(p.name);
       render(); save();
     });
     return;
   }
   else if (act === 'rank'){
+    delete p.isNew;
     const r = +el.dataset.r, b = el.getBoundingClientRect();
     const tappedLeft = e.detail > 0 && b.width && (e.clientX - b.left) < b.width / 2;
     p.rank = clamp(tappedLeft ? r - 0.5 : r, 1, 5);
@@ -1470,9 +1502,16 @@ function demoStore(){
   return {
     async putSheet(sheet, week, names){
       const db = read(); const was = db.sheets[sheet] || {};
-      db.sheets[sheet] = Object.assign({}, was, { week, names }); write(db);
+      db.sheets[sheet] = Object.assign({}, was,
+        { week, names, picked:'', opened:new Date().toISOString() });
+      write(db);
     },
     async getSheet(sheet){ return read().sheets[sheet] || null; },
+    async putPicked(sheet, when){
+      const db = read();
+      db.sheets[sheet] = Object.assign({}, db.sheets[sheet] || {}, { picked: when });
+      write(db);
+    },
     async putVault(sheet, v){
       const when = new Date().toISOString();
       const db = read();
@@ -1512,12 +1551,13 @@ function firestore(proj, key){
     `/sheets/${encodeURIComponent(sheet)}/weeks/${encodeURIComponent(week)}/signups`;
   return {
     async putSheet(sheet, week, names){
-      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['week','names','updated']), {
+      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['week','names','updated','picked']), {
         method:'PATCH', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ fields: {
           week: str(week),
           names: { arrayValue: { values: names.map(str) } },
-          updated: str(new Date().toISOString())
+          updated: str(new Date().toISOString()),
+          picked: str('')
         }})
       });
     },
@@ -1526,8 +1566,17 @@ function firestore(proj, key){
         const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
         if (!d || !d.fields) return null;
         return { week: (d.fields.week || {}).stringValue || '',
+                 picked: (d.fields.picked || {}).stringValue || '',
+                 opened: (d.fields.updated || {}).stringValue || '',
                  names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
       } catch(e){ if (e.status === 404) return null; throw e; }
+    },
+    /* The sides have gone out — the sign-up page stops taking answers. */
+    async putPicked(sheet, when){
+      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['picked']), {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ fields: { picked: str(when) } })
+      });
     },
     /* The roster and its ratings, sealed with the organiser code before it ever
        leaves the phone. Stored on the same sheet document, so the database rules
@@ -1663,6 +1712,27 @@ const sheetApi = () => inDemo() ? demoStore() : firestore(S.cloud.proj, S.cloud.
 
 const localOnly = () => location.protocol === 'file:' ||
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+/* The week is done once the sides have gone out and the day has turned over.
+   A sheet nobody ever picked from is offered after ten days, so a week you
+   only used for counting heads does not sit there for ever. */
+function weekDone(){
+  if (!cloudOK() || !S.cloud.sheet || !S.cloud.week) return '';
+  const day = t => String(t || '').slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  if (S.cloud.pickedAt){
+    if (day(S.cloud.pickedAt) < today){
+      const d = new Date(S.cloud.pickedAt);
+      const when = isNaN(d) ? 'earlier' : d.toLocaleDateString(undefined, { weekday:'long' });
+      return `The sides went out on ${when}. Start a fresh week and everyone goes back to not coming.`;
+    }
+    return '';
+  }
+  const opened = day(S.cloud.week);                 // the week id starts with the date it opened
+  if (opened && (Date.parse(today) - Date.parse(opened)) / 86400000 > 10)
+    return 'This sheet has been open more than ten days. Start a fresh week to clear the answers.';
+  return '';
+}
+
 function nextStep(){
   if (!cloudOK()) return 'Step 1 — press "Try it without setting anything up" to try the whole thing on a pretend sheet, or add your Firebase project id and web API key under Sheet settings for the real one.';
   if (!S.cloud.sheet) return 'Step 2 — press "Open this week\'s sheet". The link buttons start working once a sheet is open.';
@@ -1693,7 +1763,22 @@ function personalLink(name){
 
 async function freshWeek(){
   S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+  /* If the other phone has already rolled this one over, join its week instead
+     of inventing a second one and splitting everybody's answers in half. */
+  try {
+    const live = await sheetApi().getSheet(S.cloud.sheet);
+    if (live && live.week && live.week !== S.cloud.week && !live.picked){
+      S.cloud.week = live.week;
+      S.roster.forEach(p => { p.available = false; delete p.manual; });
+      S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = []; S.cloud.ignore = [];
+      S.cloud.pickedAt = '';
+      sheetMsg('Joined the week already open on the other phone. Everyone starts as not coming.');
+      render(); save();
+      return;
+    }
+  } catch(e){ /* no signal — carry on and open one */ }
   S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
+  S.cloud.pickedAt = '';
   S.roster.forEach(p => { p.available = false; delete p.manual; });
   S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = []; S.cloud.ignore = [];
   sheetMsg('Opening the sheet…');
@@ -1740,12 +1825,22 @@ async function sheetPull(quiet){
       const playing = r.coming === true && r.watch !== true;
       const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
       if (!p){
-        // × means ignore for the rest of this week, not just until the next check
+        /* Somebody new. They go straight on the roster, because a name sitting
+           in a to-accept list never gets picked into a side — they would turn
+           up on the night and have nowhere to play. Marked new so you can set
+           a real rating once you have seen them; × still removes them. */
         const skipped = (S.cloud.ignore || []).some(n => n.toLowerCase() === String(r.name).toLowerCase());
-        if (!skipped) guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true });
+        if (skipped) return;
+        S.roster.push({ name:r.name, lastWeek:null, games:0, sits:0, wins:0, losses:0,
+                        rank:3, isNew:true, available: playing });
+        guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true });
+        answered.add(r.name);
+        if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
         return;
       }
       answered.add(p.name);
+      // still unrated: keep them in the list above until you have given them a rating
+      if (p.isNew) guests.push({ name:p.name, watch:r.watch === true, coming:r.coming === true });
       if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
       if (p.manual) { held++; return; }            // you overruled the sheet for this one
       p.available = playing;                       // a watcher is here, but not picked
@@ -1792,12 +1887,12 @@ function renderGuests(){
   const box = document.getElementById('sheetGuests');
   const list = (S.cloud && S.cloud.guests) || [];
   box.innerHTML = list.length
-    ? `<p class="hint" style="margin:6px 0 6px">New names from the sheet — not on your roster yet:</p>` +
+    ? `<p class="hint" style="margin:6px 0 6px">New this week — already on your roster at 3, so they get a side:</p>` +
       list.map((g, i) => `<div class="rulerow">
         <span class="rt${g.watch ? '' : ' apart'}">${g.watch ? 'watching' : 'playing'}</span>
         <span class="rn">${esc(g.name)}</span>
-        <button class="linkish" data-guest="${i}" style="background:none;border:0">add</button>
-        <button class="x" data-skip="${i}" aria-label="Ignore ${esc(g.name)}">×</button>
+        <button class="linkish" data-guest="${i}" style="background:none;border:0">rate</button>
+        <button class="x" data-skip="${i}" aria-label="Remove ${esc(g.name)}">×</button>
       </div>`).join('')
     : '';
 }
@@ -1806,22 +1901,21 @@ document.getElementById('sheetGuests').addEventListener('click', e => {
   const list = (S.cloud && S.cloud.guests) || [];
   if (add){
     const g = list[+add.dataset.guest]; if (!g) return;
-    if (!S.roster.some(p => p.name.toLowerCase() === g.name.toLowerCase())){
-      S.roster.push({ name:g.name, lastWeek:null, games:0, sits:0, wins:0, losses:0,
-                      available: g.coming && !g.watch, rank:3 });
-    }
-    S.cloud.guests = list.filter((_, i) => i !== +add.dataset.guest);
-    S.cloud.ignore = (S.cloud.ignore || []).filter(n => n.toLowerCase() !== g.name.toLowerCase());
-    sheetMsg(`${g.name} added to the roster at 3 — change the rating once you have seen them play.`);
+    S.view = 'ranks';                       // straight to the Rankings tab to set their stars
+    setTab('players');
     render(); save();
+    sheetMsg(`${g.name} is on the roster at 3 — set their rating on the Players tab.`);
   } else if (skip){
     const g = list[+skip.dataset.skip];
     if (g){
-      S.cloud.ignore = (S.cloud.ignore || []).concat(g.name);
-      sheetMsg(`${g.name} ignored for this week. "Start a fresh week" gives them another go.`);
+      ask(`Remove ${g.name}? They come off the roster and off this week's sides.`, () => {
+        S.roster = S.roster.filter(p => p.name.toLowerCase() !== g.name.toLowerCase());
+        S.cloud.ignore = (S.cloud.ignore || []).concat(g.name);
+        S.cloud.guests = (S.cloud.guests || []).filter(x => x.name !== g.name);
+        sheetMsg(`${g.name} removed. "Start a fresh week" gives them another go.`);
+        render(); save();
+      });
     }
-    S.cloud.guests = list.filter((_, i) => i !== +skip.dataset.skip);
-    render(); save();
   }
 });
 
@@ -1918,6 +2012,7 @@ document.getElementById('sheetEach').onclick = async e => {
   setTimeout(() => { btn.textContent = 'Copy a link for each player'; }, 2500);
 };
 
+document.getElementById('rollBtn').onclick = () => { freshWeek(); };
 document.getElementById('freshBtn').onclick = () => {
   const n = ((S.cloud.last || {}).answered || 0);
   ask(`Start a fresh week? ${n ? n + ' answer(s) so far are cleared' : 'The count starts again'} and everyone goes back to not coming. Links you have already sent keep working.`,
@@ -2381,7 +2476,7 @@ function layoutTabs(){
   const by = id => document.getElementById(id);
 
   // This week — the only things you touch on a normal week
-  ['sheetSection','comingBox','lineupSection','benchSection','pickBtn','note']
+  ['rollBar','sheetSection','comingBox','lineupSection','benchSection','pickBtn','note']
     .forEach(id => { const el = by(id); if (el) week.appendChild(el); });
 
   // Players — the long list, on its own, where it pushes nothing else down

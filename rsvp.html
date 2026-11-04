@@ -88,6 +88,11 @@ h1 em{color:var(--ball);font-style:normal;display:block}
   <button class="go" id="newOut" style="background:transparent;border:1px solid rgba(226,75,74,.5);color:#F09595">That&#39;s me — I&#39;m out</button>
 </div>
 
+<div class="addbox" id="homeTip" hidden style="margin-top:16px">
+  <p style="margin:0 0 10px" id="homeTipText"></p>
+  <button class="go" id="installBtn" hidden>Add it to my phone</button>
+</div>
+
 <p class="done" id="done" hidden></p>
 <p class="note" id="note"></p>
 <p class="note" id="notMe" hidden></p>
@@ -106,7 +111,7 @@ const noteEl  = document.getElementById('note');
 const countEl = document.getElementById('count');
 const findEl  = document.getElementById('find');
 
-let names = [], roster = [], week = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
+let names = [], roster = [], week = '', picked = '', answers = {}, watching = {}, filter = '', busy = {}, added = [];
 /* Names added from THIS device, remembered so they can change their own mind
    after a reload. Everyone else on the roster answers from their own link. */
 const MINE = 'volleyball-added-' + (new URLSearchParams(location.search).get('s') || '');
@@ -172,6 +177,7 @@ function firestore(proj, key){
         const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
         if (!d || !d.fields) return null;
         return { week: (d.fields.week || {}).stringValue || '',
+                 picked: (d.fields.picked || {}).stringValue || '',
                  names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
       } catch(e){ if (e.status === 404) return null; throw e; }
     },
@@ -256,6 +262,7 @@ async function load(quiet){
       return;
     }
     week   = sheet.week;
+    picked = sheet.picked || '';
     roster = (sheet.names || []).slice();
     names  = roster.slice();
     const rows = await api().listSignups(SHEET, week);
@@ -266,6 +273,10 @@ async function load(quiet){
       if (!names.includes(r.name)) names.push(r.name);   // people who added themselves
     });
     if (solo() && !names.includes(who())) names.push(who());
+    if (picked){
+      closedView();
+      return;
+    }
     if (document.getElementById('done').hidden){
       noteEl.textContent = solo()
         ? 'If you do not tap anything, you are counted as not coming.'
@@ -296,6 +307,7 @@ async function answer(name, kind){
     d.hidden = false;
     d.innerHTML = `Saved — you are down as <b>${esc(word)}</b>.` +
       `<span>Nothing else to do, you can close this page. Changed your mind? Tap another button any time before the teams go out.</span>`;
+    homeTip();
     noteEl.innerHTML = (held && held.by && held.by !== DEV)
       ? `<span class="bad">Heads up:</span> ${esc(name)} was already set up on another phone. ` +
         `That is fine if you have changed phones or share one. If you meant somebody else, set this phone up again with your own name.`
@@ -339,6 +351,23 @@ async function addMe(kind){
   else noteEl.innerHTML = warned;
 }
 
+/* The sides have gone out, so there is nothing to answer until the next one. */
+function closedView(){
+  listEl.innerHTML = '';
+  countEl.hidden = true;
+  document.getElementById('find').hidden = true;
+  document.querySelector('.addbox').hidden = true;
+  document.getElementById('notMe').hidden = true;
+  document.getElementById('done').hidden = true;
+  document.getElementById('lede').innerHTML = ME || ONLY
+    ? 'Hi <b>' + esc(who()) + '</b> — the sides for this one have already gone out.'
+    : 'The sides for this one have already gone out.';
+  noteEl.innerHTML = '<span class="bad">This week is closed.</span> ' +
+    'Keep this link &mdash; it opens again by itself when the next sheet goes up, ' +
+    'and it will still know who you are.';
+  homeTip();
+}
+
 /* Which half of the page shows: the one-time setup, or your own name. */
 function showSetup(){
   const mine = solo();
@@ -350,6 +379,7 @@ function showSetup(){
   document.getElementById('lede').innerHTML = mine
     ? 'Hi <b>' + esc(who()) + '</b> — are you playing this week? Tap one. You can change it any time before the teams go out.'
     : 'This is the weekly game. Set your name once below and this phone remembers it &mdash; after that it is one tap a week.';
+  if (mine) homeTip(); else document.getElementById('homeTip').hidden = true;
   render();
 }
 
@@ -365,6 +395,31 @@ listEl.addEventListener('click', e => {
   const b = e.target.closest('[data-n]');
   if (b) answer(b.dataset.n, b.dataset.v);
 });
+/* Keep this on your phone — written for whichever phone is actually reading it. */
+let installEvt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); installEvt = e;
+  const b = document.getElementById('installBtn');
+  if (b && !document.getElementById('homeTip').hidden) b.hidden = false;
+});
+document.getElementById('installBtn').onclick = async () => {
+  if (!installEvt) return;
+  document.getElementById('installBtn').hidden = true;
+  installEvt.prompt(); await installEvt.userChoice; installEvt = null;
+};
+function homeTip(){
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const box = document.getElementById('homeTip');
+  if (standalone){ box.hidden = true; return; }     // already on their home screen
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/.test(ua) || (/Mac/.test(ua) && navigator.maxTouchPoints > 1);
+  document.getElementById('homeTipText').innerHTML = ios
+    ? '<b style="color:var(--chalk)">Keep this on your phone.</b> Tap the share button at the bottom of the screen, then <b style="color:var(--chalk)">Add to Home Screen</b>. It then opens like an app, and every week it is one tap.'
+    : '<b style="color:var(--chalk)">Keep this on your phone.</b> Tap the menu (⋮) and choose <b style="color:var(--chalk)">Add to Home screen</b>. It then opens like an app, and every week it is one tap.';
+  box.hidden = false;
+  document.getElementById('installBtn').hidden = !installEvt;
+}
+
 document.getElementById('newPlay').onclick  = () => addMe('play');
 document.getElementById('newWatch').onclick = () => addMe('watch');
 document.getElementById('newOut').onclick   = () => addMe('out');
