@@ -179,6 +179,7 @@ details.fold>:not(summary)>p:first-child{display:none}
 @media (prefers-reduced-motion:reduce){.rrow.hit{animation:none;background:rgba(242,194,48,.12)}}
 .stars button{touch-action:manipulation}
 .hint{font-size:13px;color:var(--slate);margin:12px 0 0}
+.hint.warn{color:var(--ball);font-weight:600;background:rgba(242,194,48,.12);border-left:3px solid var(--ball);padding:9px 11px;border-radius:8px}
 
 /* add players */
 .addbox{margin-top:16px;border-top:1px solid var(--line);padding-top:14px}
@@ -1812,7 +1813,16 @@ function renderRules(){
       `<button class="chip${ruleDraft.includes(p.name) ? ' picked' : ''}" data-pick="${esc(p.name)}">
          <span>${esc(p.name)}</span></button>`).join('');
   }
-  document.getElementById('ruleHint').textContent = (S.apart || []).length || (S.together || []).length
+  /* A never-together rule with more names in it than there are sides cannot be
+     kept, and the app has to pick which pair to put together. Two smaller rules
+     almost always beat one big one, so say so where the rule is made. */
+  const sides = S.sizes.length || 1;
+  const tooBig = (S.apart || []).filter(g => g.length > sides);
+  const hint = document.getElementById('ruleHint');
+  hint.classList.toggle('warn', tooBig.length > 0);
+  hint.textContent = tooBig.length
+    ? (n => `${tooBig[0].length} names in one never-together rule but only ${sides} sides this week — ${n === 1 ? 'one of them has' : n + ' of them have'} to share a side, and the app chooses which. Splitting it into smaller rules keeps the ones that matter most apart.`)(tooBig[0].length - sides)
+    : (S.apart || []).length || (S.together || []).length
     ? 'Never-together is set aside when there are only two sides, since some groups cannot be split that far.'
     : 'Add players who should never be on the same side, or who always want to be.';
 }
