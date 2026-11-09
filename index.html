@@ -65,6 +65,12 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
   font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
   color:#0A1A2C;background:var(--ball);border-radius:999px;padding:2px 6px;margin-left:2px
 }
+.done{
+  background:rgba(242,194,48,.10);border:1px solid rgba(242,194,48,.40);border-radius:10px;
+  padding:10px 12px;margin:10px 0 0;font-size:14px;line-height:1.5
+}
+.done b{color:var(--ball)}
+.done span{display:block;margin-top:5px;font-size:13px;color:var(--slate)}
 .rollover{
   background:rgba(242,194,48,.10);border:1px solid rgba(242,194,48,.45);
   border-radius:12px;padding:14px;margin:0 0 12px
@@ -327,7 +333,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <button class="ghost" id="installBtn" hidden>Install</button>
 </header>
 <p class="status" id="status" hidden></p>
-<p class="lede">Splits everyone who is playing into even sides, spreads the strong players around, and rotates which side waits out the first game.</p>
+<p class="lede">Tap who is playing, then pick the sides.</p>
 
 <div class="pane" id="paneWeek"></div>
 <div class="pane" id="panePlayers" hidden></div>
@@ -375,6 +381,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     </div>
     <div id="pasteBox" hidden style="margin-top:10px">
       <textarea id="pasteIn" placeholder="Paste the names — one per line, or separated by commas"></textarea>
+      <p class="done" id="pasteSays" hidden></p>
       <button class="ghost" id="pasteApply" style="margin-top:8px;width:100%">Mark exactly these as coming</button>
     </div>
     <p class="hint" id="comingHint">Paste the replies out of WhatsApp and the app marks exactly those players as coming, everyone else as not.</p>
@@ -403,51 +410,42 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 
 </section>
 
-<section id="sheetSection">
-  <div class="label"><span>Sign-up sheet</span></div>
-  <div class="fitrow" style="margin-top:0">
-    <button class="ghost" id="sheetNew">Open this week's sheet</button>
-    <button class="ghost" id="sheetCopy">Copy the link</button>
-    <button class="ghost" id="sheetPull">Check answers</button>
-  </div>
-  <div class="fitrow">
-    <button class="ghost" id="sheetEach">Copy a link for each player</button>
-    <button class="ghost" id="sheetSendList">Send one by one</button>
-  </div>
-  <p class="hint" id="freshRow" hidden style="margin-top:6px">
-    <b class="linkish" id="freshBtn">Start a fresh week</b> — clears every answer and starts the count again.
-  </p>
-  <div id="sendList" hidden></div>
-  <div class="fitrow">
-    <button class="ghost" id="demoBtn">Try it without setting anything up</button>
-  </div>
-  <div class="rollover" id="rollBar" hidden>
-    <p id="rollMsg"></p>
-    <button class="ghost" id="rollBtn">Start a fresh week</button>
-  </div>
-  <p class="spots warn" id="sheetNext" hidden></p>
-  <p class="spots warn" id="sheetWarn" hidden></p>
-  <p class="spots warn" id="sheetClash" hidden></p>
-  <p class="spots" id="sheetStatus"></p>
-  <div id="sheetWho"></div>
-  <div id="sheetGuests"></div>
+<section id="weekWrap">
+  <div class="label"><span>Who&#39;s playing <b id="weekCount"></b></span></div>
+  <div id="weekChips"></div>
+  <p class="hint">Tap a name to take them out, tap again to bring them back.</p>
+</section>
+
+<section id="capsSection">
+  <div class="label"><span>Captains</span></div>
+  <p class="hint" style="margin-top:0">Whoever is here captains a side every week until you change it. One per side, so they never end up on the same team.</p>
+  <div id="capList"></div>
+  <p class="hint" style="margin:14px 0 8px">Tap a name to make them a captain</p>
+  <div class="chips" id="capPick"></div>
+  <p class="hint" id="capHint"></p>
+</section>
+
+<section id="shareSection">
+  <div class="label"><span>Share with your friend</span></div>
+  <p class="hint" style="margin-top:0" id="shareLede"></p>
   <div id="sheetSetup" hidden>
     <input id="sbUrl" placeholder="Firebase project ID (e.g. my-project-12345)" autocomplete="off" spellcheck="false">
     <input id="sbKey" placeholder="Firebase web API key (starts AIza…)" autocomplete="off" spellcheck="false">
-    <input id="sbPage" placeholder="Address of rsvp.html (leave blank if it sits beside this app)" autocomplete="off" spellcheck="false">
     <button class="ghost" id="sbSave" style="width:100%;margin-top:8px">Save these</button>
   </div>
   <div id="codeSetup" hidden>
     <input id="codeIn" placeholder="A code you make up — 6 characters or more" autocomplete="off" spellcheck="false">
     <div class="fitrow">
       <button class="ghost" id="codeSave">Save the code</button>
-      <button class="ghost" id="codeLink">Copy the helper&#39;s link</button>
+      <button class="ghost" id="codeLink">Copy the link for your friend</button>
       <button class="ghost" id="codeOff">Turn it off</button>
     </div>
     <p class="hint" id="codeHint"></p>
   </div>
-  <button class="switch" id="codeBtn">Organiser code</button>
-  <button class="switch" id="sheetSetupBtn">Sheet settings</button>
+  <textarea id="friendLink" readonly hidden aria-label="Link for your friend"></textarea>
+  <button class="switch" id="codeBtn">Set the code</button>
+  <button class="switch" id="sheetSetupBtn">Where it is stored</button>
+  <p class="spots" id="sheetStatus"></p>
   <p class="hint" id="sheetHint"></p>
 </section>
 
@@ -634,11 +632,12 @@ function tidy(){
   S.sizes = evenSizes();                              // everyone plays, sides as equal as they go
   if (typeof S.hideRanks !== 'boolean') S.hideRanks = true;
   if (!Array.isArray(S.results)) S.results = [];
+  if (!Array.isArray(S.captains)) S.captains = [];
   if (!Array.isArray(S.apart)) S.apart = [['Mahesh', 'Lalu', 'Harish']];
   if (!Array.isArray(S.together)) S.together = [];
   if (!S.cloud || typeof S.cloud !== 'object') S.cloud = { proj:'', key:'', page:'', sheet:'', week:'' };
-  if (!Array.isArray(S.cloud.ignore)) S.cloud.ignore = [];
   if (S.cloud.url !== undefined){ delete S.cloud.url; }   // older copies kept a Supabase address
+  S.captains = S.captains.filter(n => S.roster.some(p => p.name === n));
   S.apart = S.apart.filter(g => Array.isArray(g) && g.length > 1);
   S.together = S.together.filter(g => Array.isArray(g) && g.length > 1);
   S.roster.forEach(p => {
@@ -714,8 +713,15 @@ function dealEven(chosen, sizes, week){
     const hit = sides.filter(side => side.some(p => g.includes(p.name.toLowerCase()))).length;
     return a + Math.max(0, hit - 1);
   }, 0);
+  // standing captains lead a side each, so two of them never share one.
+  // Weighted above the pairing rules: if the two ever disagree, the captain wins.
+  const capNames = (S.captains || []).map(x => String(x).toLowerCase());
+  const capClash = () => sides.reduce((a, side) => {
+    const c = side.filter(p => capNames.includes(p.name.toLowerCase())).length;
+    return a + Math.max(0, c - 1);
+  }, 0);
   const cost = () => gap(sides.map(avg)) + gap(sides.map(power)) + 0.8 * gap(sides.map(top))
-                     + 5 * clash() + 4 * split();
+                     + 9 * capClash() + 5 * clash() + 4 * split();
 
   for (let pass = 0; pass < 60 && n > 1; pass++){
     const before = cost();
@@ -745,12 +751,21 @@ function bestCap(names){
   if (!ps.length) return names[0] || '';
   return ps.slice().sort((a,b) => b.rank - a.rank || (b.games||0) - (a.games||0))[0].name;
 }
+/* A side's captain: the standing captain standing on it, else its best player
+   for tonight only. A name tapped in during the evening is kept while that
+   pick lasts and is gone by next week, because it lives on this week's entry. */
+function standingOn(side){
+  const caps = S.captains || [];
+  return side.find(n => caps.some(c => c.toLowerCase() === String(n).toLowerCase())) || '';
+}
 function fixCaps(h){
   if (!h || !Array.isArray(h.sides)) return;
   h.caps = h.sides.map((side, t) => {
     const cur = (h.caps || [])[t];
-    return cur && side.includes(cur) ? cur : bestCap(side);
+    if (cur && side.includes(cur)) return cur;
+    return standingOn(side) || bestCap(side);
   });
+  h.standing = h.sides.map(side => standingOn(side));
 }
 function setCaptain(t, name){
   const h = S.history[S.history.length - 1];
@@ -835,7 +850,8 @@ function pickTeam(){
   S.history.push({
     week,
     sides: sides.map(s => s.map(p => p.name)),
-    caps: sides.map(s => bestCap(s.map(p => p.name))),
+    caps: sides.map(s => { const n = s.map(p => p.name); return standingOn(n) || bestCap(n); }),
+    standing: sides.map(s => standingOn(s.map(p => p.name))),
     picked: chosen.map(p => p.name),
     sizes: S.sizes.slice(),
     first, waiting,
@@ -844,15 +860,32 @@ function pickTeam(){
   chosen.forEach(p => { p.lastWeek = week; p.games++; });
   S.week = week;
 
-  /* Picking is what ends the sign-up: the sheet is told, so the link stops
-     taking answers, and the app offers a fresh week from the next day on. */
-  if (cloudOK() && S.cloud.sheet){
-    S.cloud.pickedAt = new Date().toISOString();
-    sheetApi().putPicked(S.cloud.sheet, S.cloud.pickedAt).catch(() => {});
-  }
-
-  S.note = '';
+  S.note = ruleReport(S.history[S.history.length - 1]);
   render(); save();
+}
+
+/* Four people who must all be apart need four sides. Rather than quietly
+   putting two of them together, the app says which rule it could not keep. */
+function ruleReport(h){
+  if (!h || !Array.isArray(h.sides)) return '';
+  const says = [];
+  const has = (side, names) =>
+    side.filter(n => names.some(x => x.toLowerCase() === String(n).toLowerCase())).length;
+
+  const caps = S.captains || [];
+  const capDoubled = h.sides.filter(side => has(side, caps) > 1).length;
+  if (capDoubled)
+    says.push(`Two of your captains are on the same side — there are more captains than sides.`);
+
+  (S.apart || []).forEach(g => {
+    const over = h.sides.reduce((a, side) => a + Math.max(0, has(side, g) - 1), 0);
+    if (over) says.push(`${g.join(', ')} could not all be split up with ${h.sides.length} sides.`);
+  });
+  (S.together || []).forEach(g => {
+    const on = h.sides.filter(side => has(side, g) > 0).length;
+    if (on > 1) says.push(`${g.join(', ')} could not all be put together.`);
+  });
+  return says.join(' ');
 }
 
 function undo(){
@@ -878,6 +911,7 @@ const dots = r => { const f = Math.floor(r), h = r > f ? 1 : 0;
   return '\u25CF'.repeat(f) + (h ? '\u25D0' : '') + '\u25CB'.repeat(Math.max(0, 5 - f - h)); };
 const showRanks = () => !S.guest && S.organizer === true && !S.hideRanks;
 
+let chipsCompact = false;
 function rosterHTML(){
   if (!S.roster.length) return '<p class="empty">No players yet. Add a few names below to get started.</p>';
 
@@ -900,13 +934,15 @@ function rosterHTML(){
       </div>`;
   }
 
+  // On This week the chips are only for marking people in or out: no games
+  // count to read past, and no × to delete somebody by accident.
   return '<div class="chips">' + S.roster.map(p => `
     <div class="chip${p.available ? '' : ' out'}" data-act="toggle" data-name="${esc(p.name)}" tabindex="0" role="button" aria-pressed="${!p.available}">
       <span>${esc(p.name)}</span>
-      ${p.isNew ? '<span class="newtag">new</span>' : ''}
-      ${showRanks() ? `<span class="dots" title="Ranking ${fmtRank(p.rank)} of 5">${dots(p.rank)}</span>` : ''}
-      <span class="meta">${p.games}</span>
-      <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
+      ${p.isNew && !chipsCompact ? '<span class="newtag">new</span>' : ''}
+      ${!chipsCompact && showRanks() ? `<span class="dots" title="Ranking ${fmtRank(p.rank)} of 5">${dots(p.rank)}</span>` : ''}
+      ${chipsCompact ? '' : `<span class="meta">${p.games}</span>`}
+      ${chipsCompact ? '' : `<button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>`}
     </div>`).join('') + '</div>';
 }
 
@@ -1020,6 +1056,15 @@ function render(){
   tidy();
   document.getElementById('rosterCount').textContent =
     S.roster.length ? `${availPlayers().length} of ${S.roster.length} in` : '';
+  /* The chips you tap to mark people in or out belong with the weekly job, and
+     the ratings belong on Players. Same markup, drawn in two places. */
+  const wantRanks = S.view === 'ranks';
+  S.view = 'chips'; chipsCompact = true;
+  document.getElementById('weekChips').innerHTML = rosterHTML();
+  chipsCompact = false;
+  document.getElementById('weekCount').textContent =
+    `${S.roster.filter(p => p.available).length} of ${S.roster.length}`;
+  S.view = wantRanks ? 'ranks' : 'chips';
   document.getElementById('rosterBody').innerHTML = rosterHTML();
   document.getElementById('rosterHint').textContent = !S.roster.length ? '' :
     (S.view === 'ranks'
@@ -1051,60 +1096,29 @@ function render(){
     : 'Ratings are hidden on this copy, and everyone here shows as unrated — this device has never been given your roster. ' +
       'To bring them over: on the device that has your ratings press "Copy my roster", send yourself that text, then press "Paste a roster" below and paste it. ' +
       'The Rankings tab comes back with it.';
-  if (!org && S.view === 'ranks') S.view = 'chips';
-  document.getElementById('viewSeg').hidden = !org;
+  if (org && S.view !== 'ranks') S.view = 'ranks';
+  if (!org) S.view = 'chips';
+  document.getElementById('viewSeg').hidden = true;
   document.getElementById('privRow').hidden = !org;
   document.getElementById('expBtn').hidden = !org;
-  document.getElementById('sheetSection').hidden = S.guest;
-  if (!S.guest){ renderWho(); renderGuests(); renderSendList(); }
-  document.getElementById('freshRow').hidden = !(S.cloud && S.cloud.sheet);
-  document.getElementById('demoBtn').textContent = inDemo() ? 'Leave practice mode' : 'Try it without setting anything up';
-  document.getElementById('sheetSetupBtn').hidden = inDemo();
-  if (inDemo()) document.getElementById('sheetSetup').hidden = true;
+  document.getElementById('shareSection').hidden = S.guest || !org;
+  document.getElementById('capsSection').hidden = S.guest || !org;
+  renderCaptains();
   const codeOn = !!(S.cloud && S.cloud.code);
   document.getElementById('codeBtn').hidden = !org || !canSeal();
-  document.getElementById('codeBtn').textContent = codeOn ? 'Organiser code — on' : 'Organiser code';
+  document.getElementById('codeBtn').textContent = codeOn ? 'Set the code — on' : 'Set the code';
   if (!org) document.getElementById('codeSetup').hidden = true;
   document.getElementById('codeOff').hidden = !codeOn;
-  document.getElementById('codeLink').classList.toggle('notyet', !codeOn || !S.cloud.sheet);
-  document.getElementById('codeHint').textContent = !S.cloud.sheet
-    ? 'Open this week\'s sheet first — the code travels with it.'
+  document.getElementById('codeLink').classList.toggle('notyet', !codeOn);
+  document.getElementById('shareLede').textContent = cloudOK()
+    ? 'One code, told to your friend once. Their phone then shows the same roster and the same ratings as yours, and the two stay in step. Nobody else can read them.'
+    : 'Not set up yet. Press "Where it is stored" and paste in your Firebase project ID and web API key.';
+  document.getElementById('codeHint').textContent = !cloudOK()
+    ? 'Add the project id and key under "Where it is stored" first.'
     : codeOn
-    ? 'The code is on. Your roster and everyone\'s rating are sealed with it and kept with the sheet, so another phone that knows the code gets the same numbers and stays in step. Send that phone the helper\'s link, then tell them the code by voice or a separate message — not in the same one as the link.'
-    : 'Make up a code and whoever picks the sides can see your ratings on their own phone. Nobody without it can read them, not even from the database.';
-  const roll = weekDone();
-  const rollBar = document.getElementById('rollBar');
-  rollBar.hidden = !roll;
-  if (roll) document.getElementById('rollMsg').textContent = roll;
-
-  const nextEl = document.getElementById('sheetNext');
-  const nextTxt = nextStep();
-  nextEl.hidden = !nextTxt;
-  nextEl.textContent = nextTxt;
-  // the buttons that cannot work yet look like it
-  ['sheetCopy','sheetEach','sheetSendList'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.classList.toggle('notyet', !sheetLink());
-  });
-
-  const warnEl = document.getElementById('sheetWarn');
-  const warnTxt = linkWarning();
-  warnEl.hidden = !warnTxt;
-  warnEl.textContent = warnTxt;
-  const two = (S.cloud && S.cloud.clash) || [];
-  const twoEl = document.getElementById('sheetClash');
-  twoEl.hidden = !two.length;
-  if (two.length) twoEl.textContent =
-    `Answered from more than one phone this week: ${two.join(', ')}. ` +
-    `Usually a new phone or two people sharing one — nothing to do. If it looks wrong, ` +
-    `tap the name above to set it yourself and the sheet will leave it alone.`;
-  document.getElementById('sheetHint').textContent = inDemo()
-    ? 'Practice mode: the sheet is pretend and lives only in this browser, so you can walk the whole thing through before setting up anything real. The link only works on this device.'
-    : cloudOK()
-    ? (S.cloud.sheet
-        ? 'Send the link to the group once a week. Everyone taps their own name, and the answers drop in here on their own. Anyone not on the roster can add themselves, and they show up above for you to accept.'
-        : 'Press "Open this week\'s sheet", then copy the link into the group chat. Everyone starts as not coming until they tap Coming.')
-    : 'Not set up yet. Press "Sheet settings" and paste in your Firebase project ID and web API key.';
+    ? 'The code is on. Press "Copy the link for your friend", send them that, and tell them the code in a separate message.'
+    : 'Make up a code and whoever picks the sides sees your ratings on their own phone. Without it they are unreadable, even straight out of the database.';
+  document.getElementById('sheetHint').textContent = '';
   document.getElementById('dlBtn').hidden = !org;
   const pc = document.getElementById('privChk');
   pc.checked = !!S.hideRanks;
@@ -1169,6 +1183,7 @@ function renameEverywhere(old, next){
       if (h[k] && Object.prototype.hasOwnProperty.call(h[k], old)){ h[k][next] = h[k][old]; delete h[k][old]; }
     });
   });
+  S.captains = (S.captains || []).map(sw);
   (S.apart || []).forEach((g, k) => { S.apart[k] = g.map(sw); });
   (S.together || []).forEach((g, k) => { S.together[k] = g.map(sw); });
   (S.results || []).forEach(g => {
@@ -1223,7 +1238,9 @@ function ask(text, onYes){
 }
 
 /* ---------- events ---------- */
-document.getElementById('rosterBody').addEventListener('click', e => {
+document.getElementById('weekChips').addEventListener('click', rosterClick);
+document.getElementById('rosterBody').addEventListener('click', rosterClick);
+function rosterClick(e){
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act;
   if (act === 'sortrank' || act === 'sortaz'){
@@ -1237,9 +1254,6 @@ document.getElementById('rosterBody').addEventListener('click', e => {
     e.stopPropagation();
     ask(`Remove ${p.name} from the roster? Their games and rating go too.`, () => {
       S.roster = S.roster.filter(x => x !== p); justRanked = null;
-      // so the next check of the sheet does not put them straight back
-      if (S.cloud && S.cloud.sheet && !(S.cloud.ignore || []).some(n => n.toLowerCase() === p.name.toLowerCase()))
-        S.cloud.ignore = (S.cloud.ignore || []).concat(p.name);
       render(); save();
     });
     return;
@@ -1254,10 +1268,9 @@ document.getElementById('rosterBody').addEventListener('click', e => {
   else if (act === 'rename'){ editing = p.name; justRanked = null; render(); return; }
   else if (act === 'toggle'){
     p.available = !p.available;
-    if (S.cloud && S.cloud.sheet) p.manual = true;   // the sheet stops overruling this one
   }
   render(); save();
-});
+}
 document.getElementById('rosterBody').addEventListener('keydown', e => {
   if (e.target.id === 'renameBox'){
     if (e.key === 'Enter'){ e.preventDefault(); commitRename(e.target.value); }
@@ -1464,26 +1477,53 @@ document.getElementById('pasteBtn').onclick = () => {
   box.hidden = !box.hidden;
   if (!box.hidden) document.getElementById('pasteIn').focus();
 };
-document.getElementById('pasteApply').onclick = () => {
-  const ta = document.getElementById('pasteIn');
-  // Accepts a WhatsApp sign-up list as it is: "1. Vimal", "2) Karan ✅", "- Neel 👍"
-  const wanted = ta.value.split(/[\n,;]+/)
-    .map(x => x.replace(/^\s*(\d+\s*[.):-]?|[-*•>]+)\s*/, '')
-               .replace(/[\u2705\u2714\u2713\u{1F44D}\u{1F3D0}\u{1F3FB}-\u{1F3FF}\uFE0F]/gu, '')
-               .replace(/\s+(in|yes|coming)$/i, '').trim())
-    .filter(x => x && !/^(volleyball|this week|sunday|saturday)\b/i.test(x));
-  if (!wanted.length){ document.getElementById('comingHint').textContent = 'Nothing pasted yet.'; return; }
-  const missed = [];
-  S.roster.forEach(p => p.available = false);
-  wanted.forEach(w => {
-    const p = S.roster.find(x => x.name.toLowerCase() === w.toLowerCase());
-    if (p) p.available = true; else missed.push(w);
+/* WhatsApp replies are not a tidy list: "Mahesh in", "I'm in", "Karan +1",
+   "2) Neel ✅". Match a roster name anywhere in the line, longest first so
+   "Anil (south lake )" wins over "Anil", and show the result before it lands. */
+function readPaste(raw){
+  const lines = String(raw).split(/[\n,;]+/).map(x => x.trim()).filter(Boolean);
+  const byLength = S.roster.slice().sort((a, b) => b.name.length - a.name.length);
+  const hit = new Set(), missed = [];
+  lines.forEach(line => {
+    const clean = line
+      .replace(/^\s*(\d+\s*[.):\-]?|[\-*•>]+)\s*/, '')
+      .replace(/[\u2705\u2714\u2713\u{1F44D}\u{1F3D0}\u{1F3FB}-\u{1F3FF}\uFE0F]/gu, '')
+      .trim();
+    if (!clean) return;
+    if (/^(volleyball|this week|who.?s in|sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(clean)) return;
+    const low = clean.toLowerCase();
+    const found = byLength.find(p => low.includes(p.name.toLowerCase()));
+    if (found) hit.add(found.name); else missed.push(clean.slice(0, 28));
   });
-  const inCount = S.roster.filter(p => p.available).length;
-  ta.value = ''; document.getElementById('pasteBox').hidden = true;
+  return { names: [...hit], missed };
+}
+function pastePreview(){
+  const r = readPaste(document.getElementById('pasteIn').value);
+  const box = document.getElementById('pasteSays');
+  if (!r.names.length && !r.missed.length){ box.hidden = true; return r; }
+  box.hidden = false;
+  box.innerHTML =
+    `<b>${r.names.length} matched</b>${r.names.length ? ' — ' + esc(r.names.join(', ')) : ''}` +
+    `<span>${S.roster.length - r.names.length} will be marked not coming.` +
+    (r.missed.length ? ` Could not place: ${esc(r.missed.join(', '))}. Add them below if they play.` : '') +
+    `</span>`;
+  return r;
+}
+document.getElementById('pasteIn').addEventListener('input', pastePreview);
+document.getElementById('pasteApply').onclick = () => {
+  const r = pastePreview();
+  if (!r.names.length){
+    document.getElementById('comingHint').textContent =
+      'No roster names found in that. Check the spelling, or mark people by tapping their names.';
+    return;
+  }
+  S.roster.forEach(p => { p.available = r.names.includes(p.name); delete p.manual; });
+  document.getElementById('pasteIn').value = '';
+  document.getElementById('pasteSays').hidden = true;
+  document.getElementById('pasteBox').hidden = true;
   document.getElementById('comingHint').textContent =
-    `${inCount} marked as coming, ${S.roster.length - inCount} out.` +
-    (missed.length ? ` Not on the roster: ${missed.join(', ')} — add them if they play.` : '');
+    `${r.names.length} in, ${S.roster.length - r.names.length} out.` +
+    (r.missed.length ? ` ${r.missed.length} line(s) did not match anybody.` : '');
   render(); save();
 };
 
@@ -1492,52 +1532,13 @@ document.getElementById('pasteApply').onclick = () => {
    identify it: the project id and the web API key, both safe to ship in a page —
    the rules on the database are what actually limit access.
    Practice mode swaps the same small interface for one kept in this browser. */
-const DEMO_KEY = 'volleyball-demo-sheet';
 const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-
-function demoStore(){
-  const read = () => { try { return JSON.parse(localStorage.getItem(DEMO_KEY)) || {sheets:{},signups:{}}; }
-                       catch(e){ return {sheets:{},signups:{}}; } };
-  const write = db => { try { localStorage.setItem(DEMO_KEY, JSON.stringify(db)); } catch(e){} };
-  return {
-    async putSheet(sheet, week, names){
-      const db = read(); const was = db.sheets[sheet] || {};
-      db.sheets[sheet] = Object.assign({}, was,
-        { week, names, picked:'', opened:new Date().toISOString() });
-      write(db);
-    },
-    async getSheet(sheet){ return read().sheets[sheet] || null; },
-    async putPicked(sheet, when){
-      const db = read();
-      db.sheets[sheet] = Object.assign({}, db.sheets[sheet] || {}, { picked: when });
-      write(db);
-    },
-    async putVault(sheet, v){
-      const when = new Date().toISOString();
-      const db = read();
-      db.sheets[sheet] = Object.assign({}, db.sheets[sheet] || {}, { vault: Object.assign({}, v, { when }) });
-      write(db); return when;
-    },
-    async getVault(sheet){ return (read().sheets[sheet] || {}).vault || null; },
-    async putSignup(sheet, week, name, coming, watch){
-      const db = read(); const k = sheet + '|' + week;
-      db.signups[k] = db.signups[k] || {};
-      db.signups[k][name] = { name, coming, watch };
-      write(db);
-    },
-    async listSignups(sheet, week){
-      return Object.values(read().signups[sheet + '|' + week] || {});
-    }
-  };
-}
 
 function firestore(proj, key){
   const base = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(proj)}/databases/(default)/documents`;
   const at = (path, mask) => `${base}${path}?key=${encodeURIComponent(key)}` +
     (mask ? mask.map(f => '&updateMask.fieldPaths=' + f).join('') : '');
-  const str  = v => ({ stringValue: String(v) });
-  const bool = v => ({ booleanValue: !!v });
-  const docId = n => b64url(n);           // names hold spaces and brackets; this keeps paths clean
+  const str = v => ({ stringValue: String(v) });
   async function call(url, opts){
     const r = await fetch(url, opts);
     if (!r.ok){
@@ -1547,40 +1548,10 @@ function firestore(proj, key){
     const t = await r.text();
     return t ? JSON.parse(t) : null;
   }
-  const weekPath = (sheet, week) =>
-    `/sheets/${encodeURIComponent(sheet)}/weeks/${encodeURIComponent(week)}/signups`;
   return {
-    async putSheet(sheet, week, names){
-      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['week','names','updated','picked']), {
-        method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ fields: {
-          week: str(week),
-          names: { arrayValue: { values: names.map(str) } },
-          updated: str(new Date().toISOString()),
-          picked: str('')
-        }})
-      });
-    },
-    async getSheet(sheet){
-      try {
-        const d = await call(at(`/sheets/${encodeURIComponent(sheet)}`));
-        if (!d || !d.fields) return null;
-        return { week: (d.fields.week || {}).stringValue || '',
-                 picked: (d.fields.picked || {}).stringValue || '',
-                 opened: (d.fields.updated || {}).stringValue || '',
-                 names: (((d.fields.names || {}).arrayValue || {}).values || []).map(v => v.stringValue) };
-      } catch(e){ if (e.status === 404) return null; throw e; }
-    },
-    /* The sides have gone out — the sign-up page stops taking answers. */
-    async putPicked(sheet, when){
-      await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['picked']), {
-        method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ fields: { picked: str(when) } })
-      });
-    },
-    /* The roster and its ratings, sealed with the organiser code before it ever
-       leaves the phone. Stored on the same sheet document, so the database rules
-       do not change. Without the code it is a wall of letters. */
+    /* The roster and its ratings, sealed with the code before they ever leave
+       the phone, and kept under one document. Without the code it is a wall of
+       letters, even to somebody reading the database directly. */
     async putVault(sheet, v){
       const when = new Date().toISOString();
       await call(at(`/sheets/${encodeURIComponent(sheet)}`, ['vault','vsalt','viv','vwhen']), {
@@ -1600,36 +1571,6 @@ function firestore(proj, key){
                  viv: (f.viv || {}).stringValue, when: (f.vwhen || {}).stringValue || '' };
       } catch(e){ if (e.status === 404) return null; throw e; }
     },
-    async putSignup(sheet, week, name, coming, watch){
-      await call(at(`${weekPath(sheet, week)}/${docId(name)}`), {
-        method:'PATCH', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ fields: {
-          name: str(name), coming: bool(coming), watch: bool(watch),
-          updated: str(new Date().toISOString())
-        }})
-      });
-    },
-    async listSignups(sheet, week){
-      const out = []; let token = '';
-      do {
-        let url = at(weekPath(sheet, week)) + '&pageSize=300';
-        if (token) url += '&pageToken=' + encodeURIComponent(token);
-        let d;
-        try { d = await call(url); }
-        catch(e){ if (e.status === 404) return out; throw e; }
-        ((d || {}).documents || []).forEach(doc => {
-          const f = doc.fields || {};
-          if ((f.name || {}).stringValue) out.push({
-            name: f.name.stringValue,
-            coming: !!(f.coming || {}).booleanValue,
-            watch:  !!(f.watch  || {}).booleanValue,
-            clash:  !!(f.clash  || {}).booleanValue
-          });
-        });
-        token = (d || {}).nextPageToken || '';
-      } while (token);
-      return out;
-    }
   };
 }
 
@@ -1655,7 +1596,7 @@ async function sealRoster(code){
   const key  = await codeKey(code, salt);
   const body = JSON.stringify({
     r: S.roster.map(p => [p.name, p.rank, p.games || 0, p.sits || 0, p.wins || 0, p.losses || 0]),
-    apart: S.apart, together: S.together
+    apart: S.apart, together: S.together, captains: S.captains
   });
   const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, TE.encode(body));
   return { vault: toB64(ct), vsalt: toB64(salt), viv: toB64(iv) };
@@ -1697,6 +1638,7 @@ async function vaultPull(code){
              available: had.available === undefined ? false : had.available,
              lastWeek: had.lastWeek === undefined ? null : had.lastWeek };
   });
+  if (Array.isArray(data.captains)) S.captains = data.captains;
   if (Array.isArray(data.apart))    S.apart = data.apart;
   if (Array.isArray(data.together)) S.together = data.together;
   S.cloud.code = code;
@@ -1706,361 +1648,41 @@ async function vaultPull(code){
   return S.roster.length;
 }
 
-const inDemo = () => S.cloud && S.cloud.proj === 'demo';
 const cloudOK = () => !!(S.cloud && S.cloud.proj && S.cloud.key);
-const sheetApi = () => inDemo() ? demoStore() : firestore(S.cloud.proj, S.cloud.key);
+const sheetApi = () => firestore(S.cloud.proj, S.cloud.key);
 
 const localOnly = () => location.protocol === 'file:' ||
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
-/* The week is done once the sides have gone out and the day has turned over.
-   A sheet nobody ever picked from is offered after ten days, so a week you
-   only used for counting heads does not sit there for ever. */
-function weekDone(){
-  if (!cloudOK() || !S.cloud.sheet || !S.cloud.week) return '';
-  const day = t => String(t || '').slice(0, 10);
-  const today = new Date().toISOString().slice(0, 10);
-  if (S.cloud.pickedAt){
-    if (day(S.cloud.pickedAt) < today){
-      const d = new Date(S.cloud.pickedAt);
-      const when = isNaN(d) ? 'earlier' : d.toLocaleDateString(undefined, { weekday:'long' });
-      return `The sides went out on ${when}. Start a fresh week and everyone goes back to not coming.`;
-    }
-    return '';
-  }
-  const opened = day(S.cloud.week);                 // the week id starts with the date it opened
-  if (opened && (Date.parse(today) - Date.parse(opened)) / 86400000 > 10)
-    return 'This sheet has been open more than ten days. Start a fresh week to clear the answers.';
-  return '';
-}
-
-function nextStep(){
-  if (!cloudOK()) return 'Step 1 — press "Try it without setting anything up" to try the whole thing on a pretend sheet, or add your Firebase project id and web API key under Sheet settings for the real one.';
-  if (!S.cloud.sheet) return 'Step 2 — press "Open this week\'s sheet". The link buttons start working once a sheet is open.';
-  return '';
-}
-function linkWarning(){
-  if (location.protocol === 'file:') return 'This copy is running from a folder on this computer, so the link points at your own hard drive (file:///…) and opens nothing on anyone else\'s phone. Put the site online first, then send links from there.';
-  if (localOnly()) return 'This copy is running on a local address, so the link only works on this computer. Put the site online first, then send links from there.';
-  if (inDemo()) return 'Practice mode: this link only works on this device. Nobody else can answer with it.';
-  return '';
-}
-
 const sheetMsg = (t, warn) => {
   const el = document.getElementById('sheetStatus');
+  if (!el) return;
   el.textContent = t; el.classList.toggle('warn', !!warn);
 };
 
-function sheetLink(){
-  if (!cloudOK() || !S.cloud.sheet) return '';
-  const page = (S.cloud.page || '').trim() || new URL('rsvp.html', location.href).href;
-  return `${page}?s=${encodeURIComponent(S.cloud.sheet)}&p=${b64url(S.cloud.proj)}&k=${b64url(S.cloud.key)}`;
-}
-
-function personalLink(name){
-  const base = sheetLink();
-  return base ? base + '&n=' + b64url(name) : '';
-}
-
-async function freshWeek(){
-  S.cloud.sheet = S.cloud.sheet || (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
-  /* If the other phone has already rolled this one over, join its week instead
-     of inventing a second one and splitting everybody's answers in half. */
-  try {
-    const live = await sheetApi().getSheet(S.cloud.sheet);
-    if (live && live.week && live.week !== S.cloud.week && !live.picked){
-      S.cloud.week = live.week;
-      S.roster.forEach(p => { p.available = false; delete p.manual; });
-      S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = []; S.cloud.ignore = [];
-      S.cloud.pickedAt = '';
-      sheetMsg('Joined the week already open on the other phone. Everyone starts as not coming.');
-      render(); save();
-      return;
-    }
-  } catch(e){ /* no signal — carry on and open one */ }
-  S.cloud.week  = new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 6);
-  S.cloud.pickedAt = '';
-  S.roster.forEach(p => { p.available = false; delete p.manual; });
-  S.cloud.guests = []; S.cloud.last = null; S.cloud.clash = []; S.cloud.ignore = [];
-  sheetMsg('Opening the sheet…');
-  try {
-    await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
-    sheetMsg('Sheet is open for this week. Everyone starts as not coming — copy the link and send it out.');
-    render(); save();
-  } catch(err){
-    sheetMsg('Could not open the sheet: ' + err.message, true);
-  }
-}
-
-async function sheetNew(){
-  if (!cloudOK()){
-    sheetMsg(nextStep(), true);
-    return;
-  }
-  if (!S.roster.length){ sheetMsg('Add some players first.', true); return; }
-
-  // A sheet is already running. Pressing again used to start a new week and
-  // quietly orphan every answer, so now it refreshes the names and keeps them.
-  if (S.cloud.sheet && S.cloud.week){
-    sheetMsg('Updating the sheet…');
-    try {
-      await sheetApi().putSheet(S.cloud.sheet, S.cloud.week, S.roster.map(p => p.name));
-      sheetMsg('Sheet updated with the current roster. Same week, answers kept — use "start a fresh week" to clear them.');
-      render(); save();
-    } catch(err){
-      sheetMsg('Could not update the sheet: ' + err.message, true);
-    }
-    return;
-  }
-  await freshWeek();
-}
-
-async function sheetPull(quiet){
-  if (!cloudOK() || !S.cloud.sheet){ if (!quiet) sheetMsg('No sheet open yet.', true); return; }
-  try {
-    const rows = await sheetApi().listSignups(S.cloud.sheet, S.cloud.week);
-    let yes = 0, watch = 0, no = 0, held = 0;
-    const guests = [], answered = new Set(), twoPhones = [];
-    (rows || []).forEach(r => {
-      if (r.clash) twoPhones.push(r.name);
-      const playing = r.coming === true && r.watch !== true;
-      const p = S.roster.find(x => x.name.toLowerCase() === String(r.name).toLowerCase());
-      if (!p){
-        /* Somebody new. They go straight on the roster, because a name sitting
-           in a to-accept list never gets picked into a side — they would turn
-           up on the night and have nowhere to play. Marked new so you can set
-           a real rating once you have seen them; × still removes them. */
-        const skipped = (S.cloud.ignore || []).some(n => n.toLowerCase() === String(r.name).toLowerCase());
-        if (skipped) return;
-        S.roster.push({ name:r.name, lastWeek:null, games:0, sits:0, wins:0, losses:0,
-                        rank:3, isNew:true, available: playing });
-        guests.push({ name:r.name, watch:r.watch === true, coming:r.coming === true });
-        answered.add(r.name);
-        if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
-        return;
-      }
-      answered.add(p.name);
-      // still unrated: keep them in the list above until you have given them a rating
-      if (p.isNew) guests.push({ name:p.name, watch:r.watch === true, coming:r.coming === true });
-      if (r.watch === true) watch++; else if (r.coming === true) yes++; else no++;
-      if (p.manual) { held++; return; }            // you overruled the sheet for this one
-      p.available = playing;                       // a watcher is here, but not picked
-    });
-    // nobody answers for the quiet ones, so the sheet does: they are out
-    let silent = 0;
-    S.roster.forEach(p => {
-      if (answered.has(p.name)) return;
-      silent++;
-      if (p.manual) { held++; return; }
-      p.available = false;
-    });
-    S.cloud.guests = guests;
-    S.cloud.clash = twoPhones;
-    S.cloud.last = {
-      answered: yes + watch + no,
-      playing:  S.roster.filter(p => answered.has(p.name) && p.available).map(p => p.name),
-      watching: (rows || []).filter(r => r.watch === true).map(r => r.name),
-      out:      (rows || []).filter(r => r.coming !== true).map(r => r.name)
-    };
-    sheetMsg(`${yes} playing · ${watch} watching · ${no} out · ${silent} no answer` +
-             (silent ? ' (counted as out)' : '') +
-             (held ? ` · ${held} set by you, left alone` : ''));
-    render(); save();
-  } catch(err){
-    if (!quiet) sheetMsg('Could not reach the sheet: ' + err.message, true);
-  }
-}
-
-/* People who signed up but are not on the roster yet — one tap adds them */
-function renderWho(){
-  const box = document.getElementById('sheetWho');
-  const L = S.cloud && S.cloud.last;
-  if (!L || !L.answered){ box.innerHTML = ''; return; }
-  const row = (label, names, cls) => names.length
-    ? `<div class="rulerow"><span class="rt${cls}">${label}</span><span class="rn">${names.map(esc).join(' · ')}</span></div>`
-    : '';
-  box.innerHTML = row('playing', L.playing || [], ' apart') +
-                  row('watching', L.watching || [], '') +
-                  row('out', L.out || [], '');
-}
-
-function renderGuests(){
-  const box = document.getElementById('sheetGuests');
-  const list = (S.cloud && S.cloud.guests) || [];
-  box.innerHTML = list.length
-    ? `<p class="hint" style="margin:6px 0 6px">New this week — already on your roster at 3, so they get a side:</p>` +
-      list.map((g, i) => `<div class="rulerow">
-        <span class="rt${g.watch ? '' : ' apart'}">${g.watch ? 'watching' : 'playing'}</span>
-        <span class="rn">${esc(g.name)}</span>
-        <button class="linkish" data-guest="${i}" style="background:none;border:0">rate</button>
-        <button class="x" data-skip="${i}" aria-label="Remove ${esc(g.name)}">×</button>
-      </div>`).join('')
-    : '';
-}
-document.getElementById('sheetGuests').addEventListener('click', e => {
-  const add = e.target.closest('[data-guest]'), skip = e.target.closest('[data-skip]');
-  const list = (S.cloud && S.cloud.guests) || [];
-  if (add){
-    const g = list[+add.dataset.guest]; if (!g) return;
-    S.view = 'ranks';                       // straight to the Rankings tab to set their stars
-    setTab('players');
-    render(); save();
-    sheetMsg(`${g.name} is on the roster at 3 — set their rating on the Players tab.`);
-  } else if (skip){
-    const g = list[+skip.dataset.skip];
-    if (g){
-      ask(`Remove ${g.name}? They come off the roster and off this week's sides.`, () => {
-        S.roster = S.roster.filter(p => p.name.toLowerCase() !== g.name.toLowerCase());
-        S.cloud.ignore = (S.cloud.ignore || []).concat(g.name);
-        S.cloud.guests = (S.cloud.guests || []).filter(x => x.name !== g.name);
-        sheetMsg(`${g.name} removed. "Start a fresh week" gives them another go.`);
-        render(); save();
-      });
-    }
-  }
-});
-
-function leaveDemo(){
-  try { localStorage.removeItem(DEMO_KEY); } catch(e){}
-  const real = S.cloud.real || {};
-  S.cloud.proj = real.proj || ''; S.cloud.key = real.key || '';
-  S.cloud.sheet = real.sheet || ''; S.cloud.week = real.week || '';
-  S.cloud.guests = []; S.cloud.last = null;
-  sheetMsg(cloudOK() ? 'Back to your real sheet.' : 'Back to normal. Put the project id and key in when you are ready.');
-  render(); save();
-}
-function enterDemo(){
-  S.cloud.real = { proj:S.cloud.proj, key:S.cloud.key, sheet:S.cloud.sheet, week:S.cloud.week };
-  S.cloud.proj = 'demo'; S.cloud.key = 'demo';
-  S.cloud.sheet = ''; S.cloud.week = ''; S.cloud.guests = []; S.cloud.last = null; S.cloud.ignore = [];
-  sheetMsg('Practice mode. Open a sheet, copy the link, and open it in another tab to play both sides.');
-  render(); save();
-}
-document.getElementById('demoBtn').onclick = () => {
-  if (inDemo()) ask('Leave practice mode? The pretend answers are thrown away.', leaveDemo);
-  else if (cloudOK()) ask('Switch to practice mode? Your real sheet settings are kept and come back when you leave.', enterDemo);
-  else enterDemo();
-};
-
-document.getElementById('status').addEventListener('click', e => {
-  if (!e.target.closest('#ownIt')) return;
-  ask('Treat this as your own copy? The Rankings tab and the sign-up sheet come back. Ratings here stay at 3 until you paste your roster in.', () => {
-    S.guest = false;
-    render(); save();
-  });
-});
-
-/* One row per player: tapping opens WhatsApp with that player's own link
-   already written, so you only pick the person and press send. */
-function renderSendList(){
-  const box = document.getElementById('sendList');
-  if (box.hidden) return;
-  if (!sheetLink()){
-    box.innerHTML = `<p class="spots warn" style="margin-top:8px">${esc(nextStep())}</p>`;
-    return;
-  }
-  box.innerHTML = `<p class="hint">Tap a name: WhatsApp opens with their own link ready, and you pick who to send it to.</p>` +
-    S.roster.map((p, i) => `<div class="rulerow">
-      <span class="rn">${esc(p.name)}</span>
-      <button class="linkish" data-wa="${i}" style="background:none;border:0">WhatsApp</button>
-      <button class="linkish" data-cp="${i}" style="background:none;border:0;color:var(--slate)">copy</button>
-    </div>`).join('');
-}
-function inviteText(name){
-  return `Volleyball this week — tap Playing, Watching or Out:\n${personalLink(name)}`;
-}
-document.getElementById('sheetSendList').onclick = e => {
-  const box = document.getElementById('sendList');
-  if (box.hidden && !sheetLink()) sheetMsg(nextStep(), true);
-  box.hidden = !box.hidden;
-  e.currentTarget.textContent = box.hidden ? 'Send one by one' : 'Hide the list';
-  renderSendList();
-};
-document.getElementById('sendList').addEventListener('click', async e => {
-  const wa = e.target.closest('[data-wa]'), cp = e.target.closest('[data-cp]');
-  const p = S.roster[+((wa || cp) || {}).dataset?.[wa ? 'wa' : 'cp']];
-  if (!p) return;
-  if (wa){
-    if (localOnly()){
-      sheetMsg(`Not sent: ${linkWarning()}`, true);
-      return;
-    }
-    window.open('https://wa.me/?text=' + encodeURIComponent(inviteText(p.name)), '_blank', 'noopener');
-    sheetMsg(`WhatsApp opened for ${p.name} — pick them from your contacts and send.`
-             + (inDemo() ? ' Practice mode, so it only works on this device.' : ''));
-  } else {
-    try { await navigator.clipboard.writeText(personalLink(p.name)); cp.textContent = 'copied'; }
-    catch(err){ sheetMsg(personalLink(p.name)); }
-    setTimeout(() => { cp.textContent = 'copy'; }, 1500);
-  }
-});
-
-document.getElementById('sheetEach').onclick = async e => {
-  const btn = e.currentTarget;            // the event's own pointer goes stale at the first await
-  if (!sheetLink()){ sheetMsg(nextStep(), true); return; }
-  const lines = S.roster.map(p => `${p.name}\n${personalLink(p.name)}`).join('\n\n');
-  try {
-    await navigator.clipboard.writeText(lines);
-    btn.textContent = `Copied ${S.roster.length}`;
-    sheetMsg(`${S.roster.length} personal links copied — paste the list somewhere and send each person their own. Each link shows only that player's name.`
-             + (linkWarning() ? ' ' + linkWarning() : ''));
-  } catch(err){
-    const box = document.getElementById('shareText');
-    box.hidden = false; box.value = lines; box.focus();
-    btn.textContent = 'Copy it from the box';
-    sheetMsg('Your browser would not let the app copy. The list is in the box above — select it all and copy by hand.', true);
-  }
-  setTimeout(() => { btn.textContent = 'Copy a link for each player'; }, 2500);
-};
-
-document.getElementById('rollBtn').onclick = () => { freshWeek(); };
-document.getElementById('freshBtn').onclick = () => {
-  const n = ((S.cloud.last || {}).answered || 0);
-  ask(`Start a fresh week? ${n ? n + ' answer(s) so far are cleared' : 'The count starts again'} and everyone goes back to not coming. Links you have already sent keep working.`,
-      freshWeek);
-};
-
-document.getElementById('sheetNew').onclick = sheetNew;
-document.getElementById('sheetPull').onclick = () => sheetPull(false);
-document.getElementById('sheetCopy').onclick = async e => {
-  const btn = e.currentTarget;
-  const link = sheetLink();
-  if (!link){ sheetMsg(nextStep(), true); return; }
-  try {
-    await navigator.clipboard.writeText(link);
-    btn.textContent = 'Copied';
-    sheetMsg(linkWarning() || 'Link copied. Paste it into the group chat.', !!linkWarning());
-  } catch(err){
-    const box = document.getElementById('shareText');
-    box.hidden = false; box.value = link; box.focus(); box.select();
-    sheetMsg('Your browser would not let the app copy. The link is in the box below — select it and copy by hand.', true);
-  }
-  setTimeout(() => { btn.textContent = 'Copy the link'; }, 2000);
-};
+/* ---------- where the sealed roster is kept ---------- */
 document.getElementById('sheetSetupBtn').onclick = () => {
   const box = document.getElementById('sheetSetup');
   box.hidden = !box.hidden;
   if (!box.hidden){
-    document.getElementById('sbUrl').value  = S.cloud.proj || '';
-    document.getElementById('sbKey').value  = S.cloud.key  || '';
-    document.getElementById('sbPage').value = S.cloud.page || '';
+    document.getElementById('sbUrl').value = S.cloud.proj || '';
+    document.getElementById('sbKey').value = S.cloud.key  || '';
   }
 };
 document.getElementById('sbSave').onclick = () => {
   S.cloud.proj = document.getElementById('sbUrl').value.trim()
                    .replace(/^https?:\/\//, '').replace(/\.firebaseapp\.com.*$/, '')
                    .replace(/\.web\.app.*$/, '').replace(/\/.*$/, '');
-
   S.cloud.key  = document.getElementById('sbKey').value.trim();
-  S.cloud.page = document.getElementById('sbPage').value.trim();
   document.getElementById('sheetSetup').hidden = true;
-  sheetMsg(cloudOK() ? 'Saved. Open this week\'s sheet when you are ready.' : 'Both the project id and the key are needed.', !cloudOK());
+  sheetMsg(cloudOK() ? 'Saved. Now set a code and send your friend the link.'
+                     : 'Both the project id and the key are needed.', !cloudOK());
   render(); save();
 };
 
 /* ---------- the organiser code, the buttons ---------- */
 function helperLink(){
   if (!cloudOK() || !S.cloud.sheet) return '';
-  const pack = b64url(JSON.stringify({ p:S.cloud.proj, k:S.cloud.key, s:S.cloud.sheet, g:S.cloud.page || '' }));
+  const pack = b64url(JSON.stringify({ p:S.cloud.proj, k:S.cloud.key, s:S.cloud.sheet }));
   return location.origin + location.pathname + '?org=' + pack;
 }
 document.getElementById('codeBtn').onclick = () => {
@@ -2072,13 +1694,14 @@ document.getElementById('codeSave').onclick = async () => {
   const v = document.getElementById('codeIn').value.trim();
   const hint = document.getElementById('codeHint');
   if (v.length < 6){ hint.textContent = 'Make it at least six characters — a short word and a number is plenty.'; return; }
-  if (!S.cloud.sheet){ hint.textContent = 'Open this week\'s sheet first.'; return; }
+  if (!cloudOK()){ hint.textContent = 'Add the project id and key under "Where it is stored" first.'; return; }
+  if (!S.cloud.sheet) S.cloud.sheet = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   S.cloud.code = v;
   hint.textContent = 'Sealing the roster…';
   try {
     await sheetApi().putVault(S.cloud.sheet, await sealRoster(v));
     render(); save();
-    hint.textContent = 'Saved. Press "Copy the helper\'s link", send that to whoever picks the sides, and tell them the code in a separate message.';
+    hint.textContent = 'Saved. Press "Copy the link for your friend", send them that, and tell them the code in a separate message.';
   } catch(err){
     S.cloud.code = '';
     hint.textContent = 'That did not reach the database. Check your signal and try again.';
@@ -2089,17 +1712,17 @@ document.getElementById('codeLink').onclick = async e => {
   const link = helperLink();
   const hint = document.getElementById('codeHint');
   if (!link || !S.cloud.code){ hint.textContent = 'Save a code first.'; return; }
-  if (localOnly()){ hint.textContent = linkWarning(); return; }
+  if (localOnly()){ hint.textContent = 'This copy is running on a local address, so the link only works on this computer.'; return; }
   try {
     await navigator.clipboard.writeText(link);
     btn.textContent = 'Copied';
     hint.textContent = 'Link copied. Send the code in a different message — the two together in one place is the same as no code at all.';
   } catch(err){
-    const box = document.getElementById('shareText');
+    const box = document.getElementById('friendLink');
     box.hidden = false; box.value = link; box.focus(); box.select();
     hint.textContent = 'Your browser would not let the app copy. The link is in the box above — select it and copy by hand.';
   }
-  setTimeout(() => { btn.textContent = 'Copy the helper\'s link'; }, 2000);
+  setTimeout(() => { btn.textContent = 'Copy the link for your friend'; }, 2000);
 };
 document.getElementById('codeOff').onclick = () => {
   ask('Turn the organiser code off? Phones that already unlocked keep the roster they have, but they stop getting your changes.', () => {
@@ -2129,10 +1752,43 @@ document.getElementById('unlockGo').onclick = async e => {
   btn.disabled = false;
 };
 
-/* every twenty seconds, so answers land while you watch */
-setInterval(() => {
-  if (document.visibilityState === 'visible' && cloudOK() && S.cloud.sheet) sheetPull(true);
-}, 20000);
+/* ---------- captains you set once ---------- */
+function renderCaptains(){
+  const list = document.getElementById('capList');
+  const pick = document.getElementById('capPick');
+  const caps = (S.captains || []).filter(n => S.roster.some(p => p.name === n));
+  list.innerHTML = caps.length
+    ? caps.map(n => `<div class="rulerow">
+        <span class="rt">captain</span>
+        <span class="rn">${esc(n)}</span>
+        <button class="x" data-uncap="${esc(n)}" aria-label="${esc(n)} is no longer a captain">&times;</button>
+      </div>`).join('')
+    : '<p class="hint" style="margin:0 0 6px">Nobody yet — the best player on each side captains it.</p>';
+  pick.innerHTML = S.roster
+    .filter(p => !caps.some(c => c.toLowerCase() === p.name.toLowerCase()))
+    .map(p => `<button class="chip" data-cap="${esc(p.name)}" style="cursor:pointer">${esc(p.name)}</button>`)
+    .join('');
+  const sides = S.sizes.length;
+  document.getElementById('capHint').textContent = !caps.length
+    ? 'Tap a name above to make them a captain. They stay captain every week until you change it.'
+    : caps.length > sides
+    ? `${caps.length} captains but only ${sides} sides this week, so ${caps.length - sides} of them just play.`
+    : caps.length < sides
+    ? `${caps.length} of ${sides} sides have a standing captain. The rest take their best player.`
+    : 'One captain for each side. They are never put on the same team.';
+}
+document.getElementById('capsSection').addEventListener('click', e => {
+  const add = e.target.closest('[data-cap]'), off = e.target.closest('[data-uncap]');
+  if (add){
+    const n = add.dataset.cap;
+    if (!(S.captains || []).some(c => c.toLowerCase() === n.toLowerCase()))
+      S.captains = (S.captains || []).concat(n);
+    render(); save();
+  } else if (off){
+    S.captains = (S.captains || []).filter(c => c !== off.dataset.uncap);
+    render(); save();
+  }
+});
 
 /* ---------- pairing rules ---------- */
 let ruleDraft = [];
@@ -2476,13 +2132,15 @@ function layoutTabs(){
   const by = id => document.getElementById(id);
 
   // This week — the only things you touch on a normal week
-  ['rollBar','sheetSection','comingBox','lineupSection','benchSection','pickBtn','note']
+  ['weekWrap','comingBox','lineupSection','benchSection','pickBtn','note']
     .forEach(id => { const el = by(id); if (el) week.appendChild(el); });
 
   // Players — the long list, on its own, where it pushes nothing else down
   if (by('rosterSection')) players.appendChild(by('rosterSection'));
 
   // Setup — set once, folded away behind one row each
+  foldInto(setup, by('capsSection'),   'Captains',        'Set once, they lead a side every week');
+  foldInto(setup, by('shareSection'),  'Share with your friend', 'One code, so their phone has your ratings');
   foldInto(setup, by('rulesSection'),  'Pairing rules',   'Who must never share a side');
   foldInto(setup, by('sidesSection'),  'Sides and courts', 'How many teams, and hiding ratings');
   foldInto(setup, by('backupBox'),     'Roster backup',   'Copy, download or restore your players');
@@ -2512,14 +2170,7 @@ function setTab(name){
   try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
 }
 
-/* A number on the Players tab when somebody has added themselves. */
-function tabPips(){
-  const g = (S.cloud && S.cloud.guests) || [];
-  const pip = document.getElementById('playerPip');
-  if (!pip) return;
-  pip.hidden = !g.length;
-  pip.textContent = g.length;
-}
+function tabPips(){}
 
 let fromLink = false;
 const code = /[#&]s=([^&]+)/.exec(location.hash || '');
@@ -2545,7 +2196,6 @@ if (!S.roster.length){ importRoster(SEED); if (typeof S.organizer !== 'boolean')
 if (orgLink){
   S.cloud = S.cloud || {};
   S.cloud.proj = orgLink.p; S.cloud.key = orgLink.k; S.cloud.sheet = orgLink.s;
-  if (orgLink.g) S.cloud.page = orgLink.g;
   S.guest = false;
   try { history.replaceState(null, '', location.pathname); } catch(e){}
 }
