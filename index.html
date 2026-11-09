@@ -234,9 +234,6 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 .tag{font-family:'IBM Plex Mono',monospace;font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 8px}
 .tag.go{background:var(--ball);color:#0A1A2C;font-weight:600;box-shadow:0 0 0 3px rgba(242,194,48,.22)}
 .tag.wait{background:rgba(232,237,242,.08);color:var(--slate)}
-.first{font-family:'Archivo',system-ui,sans-serif;font-size:12px;color:#B9C6D6;margin:4px 0 0;line-height:1.7}
-.first b{color:var(--ball);font-weight:500}
-.first .past{display:block;color:var(--slate);font-size:11px}
 .chead span{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:#B9C6D6}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .slot{
@@ -249,22 +246,6 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 .slot .pos{font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--slate)}
 .slot .who{font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px;line-height:1.15;letter-spacing:.01em}
 .slot .rk{font-size:10px;color:var(--ball);letter-spacing:1px}
-.next{background:rgba(8,21,37,.45);border:1px solid rgba(232,237,242,.1);border-radius:12px;padding:12px;margin-top:14px}
-.next .nhead{
-  margin:0 0 10px;display:flex;align-items:center;justify-content:space-between;gap:10px;
-  font-family:'Archivo',system-ui,sans-serif;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--slate)
-}
-.next .vs{display:flex;align-items:center;gap:10px}
-.next .v{font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate);flex:none}
-.next .won{
-  flex:1;min-width:0;background:var(--court);border:1px solid rgba(242,194,48,.45);color:var(--chalk);
-  border-radius:10px;padding:12px 8px;cursor:pointer;
-  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px
-}
-.next .won:hover{background:rgba(242,194,48,.14)}
-.next .won:active{transform:scale(.98)}
-.next .upnext{margin:10px 0 0;font-family:'Archivo',system-ui,sans-serif;font-size:13px;color:#B9C6D6}
-.next .past{display:block;color:var(--slate);font-size:11px;margin-top:4px}
 #askWrap{
   position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
   padding:20px;background:rgba(4,10,20,.72)
@@ -986,74 +967,14 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
   </div>`;
 }
 
-/* Who is on court right now, as the session goes on. The first game and the
-   original waiting list stay untouched, so the message you already sent still reads true. */
+/* Which two sides start, so the third can be marked as waiting. Nothing tracks
+   the games themselves — you all know who won without the app telling you. */
 function fixSession(h){
   if (!h || !Array.isArray(h.sides)) return;
   const n = h.sides.length;
-  if (!Array.isArray(h.playing) || h.playing.length !== 2 || h.playing.some(i => i >= n)){
+  if (!Array.isArray(h.playing) || h.playing.length !== 2 || h.playing.some(i => i >= n))
     h.playing = (h.first || [0, 1]).slice(0, 2);
-    h.queue   = (h.waiting || []).slice();
-    h.log     = [];
-  }
-  if (!Array.isArray(h.queue)) h.queue = [];
-  if (!Array.isArray(h.log))   h.log = [];
 }
-function sitAll(h, t, by){
-  (h.sides[t] || []).forEach(nm => {
-    const p = S.roster.find(x => x.name === nm);
-    if (p) p.sits = Math.max(0, (p.sits || 0) + by);
-  });
-}
-function gameWon(winner){
-  const h = S.history[S.history.length - 1]; if (!h) return;
-  fixSession(h);
-  const at = h.playing.indexOf(winner); if (at < 0 || !h.queue.length) return;
-  const loser = h.playing[1 - at];
-  const next  = h.queue.shift();
-  h.queue.push(loser);
-  h.playing = [winner, next];
-  sitAll(h, loser, 1);                 // the side coming off starts waiting
-  h.log.push([winner, loser, next]);
-  render(); save();
-}
-function undoGame(){
-  const h = S.history[S.history.length - 1];
-  if (!h || !Array.isArray(h.log) || !h.log.length) return;
-  const [winner, loser, next] = h.log.pop();
-  h.queue = h.queue.filter(x => x !== loser);
-  h.queue.unshift(next);
-  h.playing = [winner, loser];
-  sitAll(h, loser, -1);
-  render(); save();
-}
-
-function firstGameHTML(last){
-  const sides = last.sides || [last.picked];
-  if (sides.length < 3) return '';
-  const names = (last.first || []).map(i => `Team ${LET[i]}`).join(' vs ');
-  const wait  = (last.waiting || []).map(i => `Team ${LET[i]}`).join(', ');
-  const past  = S.history.slice(-6, -1).filter(x => (x.waiting || []).length)
-    .map(x => x.waiting.map(i => LET[i]).join('+')).join(' \u00b7 ');
-  fixSession(last);
-  const started = last.log.length > 0;
-  const [x, y] = last.playing;
-  const upNext = last.queue.map(i => `Team ${LET[i]}`).join(', then ');
-  return `
-  <div class="next">
-    <p class="nhead">${started ? `On court now · game ${last.log.length + 1}` : 'First game'}
-      ${started ? `<b class="linkish" id="undoGameBtn">undo last</b>` : ''}</p>
-    <div class="vs">
-      <button class="won" data-won="${x}">Team ${LET[x]} won</button>
-      <span class="v">vs</span>
-      <button class="won" data-won="${y}">Team ${LET[y]} won</button>
-    </div>
-    ${upNext ? `<p class="upnext">Up next: ${upNext}</p>` : ''}
-    <p class="hint">Tap whoever won. They stay on, the other side goes to the back of the line, and the next side comes on.
-      ${!started && past ? `<span class="past">waited before: ${past}</span>` : ''}</p>
-  </div>`;
-}
-
 function lastSides(){
   const last = S.history[S.history.length - 1];
   return last ? (last.sides || [last.picked]) : null;
@@ -1157,8 +1078,7 @@ function render(){
     const tagOf = t => sides.length < 3 ? '' : (live.includes(t) ? 'plays' : 'waits');
     fixCaps(last);
     document.getElementById('lineup').innerHTML =
-      sides.map((s, t) => courtHTML(s, t, last.sizes, tagOf(t), (last.caps || [])[t], last.log && last.log.length > 0)).join('')
-      + firstGameHTML(last)
+      sides.map((s, t) => courtHTML(s, t, last.sizes, tagOf(t), (last.caps || [])[t], false)).join('')
       + `<p class="hint">Hold a player and drag them onto another team to move them, or straight onto another player to swap the two. Tap a player to make them captain.</p>`;
   } else ls.hidden = true;
 
@@ -2086,13 +2006,6 @@ document.addEventListener('mousemove', e => {
   moveGhost(drag.x, drag.y);
 });
 document.addEventListener('mouseup', e => { if (drag && !drag.touch) endDrag(e.clientX, e.clientY); });
-
-document.getElementById('lineup').addEventListener('click', e => {
-  const u = e.target.closest('#undoGameBtn');
-  if (u){ undoGame(); return; }
-  const w = e.target.closest('[data-won]');
-  if (w) gameWon(+w.dataset.won);
-});
 
 document.getElementById('ratToggle').onclick = () => {
   S.hideRanks = !S.hideRanks;
