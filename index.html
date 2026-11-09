@@ -61,6 +61,10 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
 .label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px;color:var(--slate);letter-spacing:.04em}
 .label b{color:var(--chalk);font-weight:600}
 
+.chead .avg{
+  display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;
+  background:rgba(242,194,48,.16);color:var(--ball);font-size:11px;font-weight:700;letter-spacing:.02em
+}
 /* the rating sits in the flow under the name, so a long name never lands on it */
 .slot .rr{font-size:11px;font-weight:700;color:var(--ball);opacity:.9;letter-spacing:.02em}
 .newtag{
@@ -975,7 +979,7 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
   return `<div class="court" data-side="${t}">
     <div class="chead">
       <h3>Team ${LET[t] || t + 1}${tag ? `<i class="tag ${tag === 'waits' ? 'wait' : 'go'}">${tag === 'waits' ? 'waits' : (onNow ? 'on court' : 'plays first')}</i>` : ''}</h3>
-      <span>${cap ? `C: ${esc(cap)} · ` : ''}${ps.length} players${showRanks() ? ` · avg rank ${avg}` : ''}</span>
+      <span>${cap ? `C: ${esc(cap)} · ` : ''}${ps.length} players${showRanks() ? ` <b class="avg">avg ${avg}</b>` : ''}</span>
     </div>
     <div class="grid">${cells}</div>
   </div>`;
@@ -2132,7 +2136,7 @@ function layoutTabs(){
   const by = id => document.getElementById(id);
 
   // This week — the only things you touch on a normal week
-  ['weekWrap','comingBox','lineupSection','pickBtn','note']
+  ['weekWrap','comingBox','pickBtn','lineupSection','note']
     .forEach(id => { const el = by(id); if (el) week.appendChild(el); });
 
   // Players — the long list, on its own, where it pushes nothing else down
