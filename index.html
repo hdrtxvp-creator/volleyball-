@@ -61,6 +61,8 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:14px;
 .label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-size:13px;color:var(--slate);letter-spacing:.04em}
 .label b{color:var(--chalk);font-weight:600}
 
+/* the rating sits in the flow under the name, so a long name never lands on it */
+.slot .rr{font-size:11px;font-weight:700;color:var(--ball);opacity:.9;letter-spacing:.02em}
 .newtag{
   font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
   color:#0A1A2C;background:var(--ball);border-radius:999px;padding:2px 6px;margin-left:2px
@@ -487,7 +489,10 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 </section>
 
 <section id="lineupSection" hidden>
-  <div class="label"><span>This week's sides</span></div>
+  <div class="label">
+    <span>This week&#39;s sides</span>
+    <button class="ghost" id="ratToggle" style="padding:5px 11px;font-size:12px"></button>
+  </div>
   <div id="lineup"></div>
   <div class="fitrow">
     <a class="ghost wa" id="waBtn" href="#" target="_blank" rel="noopener">Send to WhatsApp</a>
@@ -501,11 +506,6 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <canvas id="shot"></canvas>
     <p class="hint" id="imgHint"></p>
   </div>
-</section>
-
-<section id="benchSection" hidden>
-  <div class="label"><span>Not coming</span><span>Weeks waiting</span></div>
-  <div class="bench" id="bench"></div>
 </section>
 
 <button class="pick" id="pickBtn">Pick this week's sides</button>
@@ -958,6 +958,7 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
       return `<div class="slot${p.name === cap ? ' cap' : ''}" style="--i:${i}" data-side="${t}" data-name="${esc(p.name)}">
                 <span class="pos">${pos}</span>
                 <span class="who">${esc(p.name)}</span>
+                ${showRanks() ? `<span class="rr">${fmtRank(p.rank)}</span>` : ''}
                 ${p.name === cap ? '<span class="capb" title="Captain">C</span>' : ''}
               </div>`;
     }).join('');
@@ -966,6 +967,7 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
       <div class="slot${p.name === cap ? ' cap' : ''}" style="--i:${i}" data-side="${t}" data-name="${esc(p.name)}">
         <span class="pos">${i + 1}</span>
         <span class="who">${esc(p.name)}</span>
+        ${showRanks() ? `<span class="rr">${fmtRank(p.rank)}</span>` : ''}
         ${p.name === cap ? '<span class="capb" title="Captain">C</span>' : ''}
       </div>`).join('');
   }
@@ -1120,6 +1122,10 @@ function render(){
     : 'Make up a code and whoever picks the sides sees your ratings on their own phone. Without it they are unreadable, even straight out of the database.';
   document.getElementById('sheetHint').textContent = '';
   document.getElementById('dlBtn').hidden = !org;
+  const rt = document.getElementById('ratToggle');
+  rt.hidden = !org;
+  rt.textContent = S.hideRanks ? 'Show ratings' : 'Hide ratings';
+  rt.setAttribute('aria-pressed', String(!S.hideRanks));
   const pc = document.getElementById('privChk');
   pc.checked = !!S.hideRanks;
   document.getElementById('privHint').textContent = S.guest ? '' : S.hideRanks
@@ -1150,16 +1156,6 @@ function render(){
       + firstGameHTML(last)
       + `<p class="hint">Hold a player and drag them onto another team to move them, or straight onto another player to swap the two. Tap a player to make them captain.</p>`;
   } else ls.hidden = true;
-
-  const benchNames = last ? S.roster.filter(p => !(last.picked || []).includes(p.name)) : [];
-  const bs = document.getElementById('benchSection');
-  if (last && benchNames.length){
-    bs.hidden = false;
-    document.getElementById('bench').innerHTML = benchNames.map(p => {
-      const w = p.lastWeek === null ? 'not played yet' : `${S.week - p.lastWeek} wk`;
-      return `<div class="brow"><span class="bn">${esc(p.name)}${p.available ? '' : ' <span class="bw">(out)</span>'}</span><span class="bw">${w}</span></div>`;
-    }).join('');
-  } else bs.hidden = true;
 
 
   const box = document.getElementById('renameBox');
@@ -2084,6 +2080,10 @@ document.getElementById('lineup').addEventListener('click', e => {
   if (w) gameWon(+w.dataset.won);
 });
 
+document.getElementById('ratToggle').onclick = () => {
+  S.hideRanks = !S.hideRanks;
+  render(); save();
+};
 document.getElementById('pickBtn').onclick = pickTeam;
 document.getElementById('undoBtn').onclick = undo;
 document.getElementById('resetBtn').onclick = () => {
@@ -2132,7 +2132,7 @@ function layoutTabs(){
   const by = id => document.getElementById(id);
 
   // This week — the only things you touch on a normal week
-  ['weekWrap','comingBox','lineupSection','benchSection','pickBtn','note']
+  ['weekWrap','comingBox','lineupSection','pickBtn','note']
     .forEach(id => { const el = by(id); if (el) week.appendChild(el); });
 
   // Players — the long list, on its own, where it pushes nothing else down
