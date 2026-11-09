@@ -220,20 +220,6 @@ button.rattog[aria-pressed="false"]::before{
   background:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.25)
 }
 button.rattog:active{transform:scale(.97)}
-/* The list you check after a screenshot is read. Same green-is-showing,
-   red-is-not language as the ratings switch, so one convention covers both. */
-#shotList{margin:10px 0 0;border-top:1px solid var(--line)}
-.srow{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line)}
-.srow .sname{flex:1;min-width:0;font-weight:500;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.srow .said{font-size:11px;color:var(--slate);display:block;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.srow .unsure{color:var(--ball)}
-.sflip{
-  font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:12px;letter-spacing:.04em;
-  flex:none;min-width:74px;border-radius:999px;padding:7px 12px;cursor:pointer;
-  background:var(--go);border:2px solid var(--go);color:var(--ink)
-}
-.sflip[data-in="0"]{background:var(--stop);border-color:var(--stop);color:#fff}
-.sflip:active{transform:scale(.97)}
 button.switch{font:inherit;font-size:13px;background:none;border:0;color:var(--slate);cursor:pointer;padding:8px 0 0;text-decoration:underline}
 
 /* settings */
@@ -404,17 +390,6 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
       <button class="ghost" id="allIn">Everyone in</button>
       <button class="ghost" id="allOut">Everyone out</button>
       <button class="ghost" id="pasteBtn">Paste who's coming</button>
-      <button class="ghost" id="shotBtn">Read a screenshot</button>
-    </div>
-    <input type="file" id="shotIn" accept="image/*" multiple hidden>
-    <div id="shotBox" hidden style="margin-top:10px">
-      <p class="done" id="shotSays"></p>
-      <div id="shotList"></div>
-      <div class="fitrow" id="shotActions" hidden>
-        <button class="ghost" id="shotMore">Add another screenshot</button>
-        <button class="ghost" id="shotCancel">Start over</button>
-      </div>
-      <button class="ghost" id="shotApply" hidden style="margin-top:8px;width:100%">Mark exactly these as coming</button>
     </div>
     <div id="pasteBox" hidden style="margin-top:10px">
       <textarea id="pasteIn" placeholder="Paste the names — one per line, or separated by commas"></textarea>
@@ -1467,148 +1442,6 @@ function readPaste(raw){
   });
   return { names: [...hit], missed };
 }
-
-/* ---------- reading a WhatsApp screenshot ----------
-   The text recognition runs on the phone itself; nothing leaves it and no
-   account is needed. It is good at names and poor at emoji, so a reply the
-   reader could not judge is marked "not sure" and left for you to check.
-   Nothing is applied until you have seen the list. */
-const OCR_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/6.0.1/tesseract.min.js';
-let ocrLoad = null, shotRows = [];
-
-function loadOCR(){
-  if (window.Tesseract) return Promise.resolve();
-  if (ocrLoad) return ocrLoad;
-  ocrLoad = new Promise((good, bad) => {
-    const s = document.createElement('script');
-    s.src = OCR_SRC;
-    s.onload = () => good();
-    s.onerror = () => { ocrLoad = null; bad(new Error('offline')); };
-    document.head.appendChild(s);
-  });
-  return ocrLoad;
-}
-
-/* "can't make it", "out this week" — a no anywhere in the reply beats a yes,
-   because people write "sorry, I'm out" far more often than the reverse. */
-const SAID_NO  = /\b(can'?t|cannot|cant|won'?t|sorry|out|not|no|nope|nahi|na|next week|next time|skip|miss|missing|busy|working|work|away|unable|another time)\b/i;
-const SAID_YES = /\b(in|yes|yep|yeah|yup|ya|ha|sure|count me|coming|come|i am|im|will be|there|here|play|playing|playing|\+1)\b/i;
-
-function readShotText(raw){
-  const lines = String(raw).split('\n').map(x => x.trim()).filter(Boolean);
-  const byLength = S.roster.slice().sort((a, b) => b.name.length - a.name.length);
-  const out = [];
-  lines.forEach((line, i) => {
-    const low = line.toLowerCase();
-    const found = byLength.find(p => low.includes(p.name.toLowerCase()));
-    if (!found) return;
-    /* In a group chat the sender's name sits on its own line with the reply
-       under it, so judge on both: the rest of this line, plus the next one. */
-    const rest  = low.replace(found.name.toLowerCase(), ' ');
-    const reply = (rest + ' ' + (lines[i + 1] || '')).replace(/\d{1,2}:\d{2}\s*[ap]m/ig, ' ').trim();
-    const no = SAID_NO.test(reply), yes = SAID_YES.test(reply);
-    /* A reply carrying both ("sorry, can't, maybe next week — unless I'm in?")
-       is nobody's to guess, so it goes in the list unjudged. */
-    out.push({
-      name: found.name,
-      in: !no,
-      sure: no !== yes,
-      said: (lines[i + 1] || rest).replace(/\d{1,2}:\d{2}\s*[ap]m/ig, '').trim().slice(0, 40)
-    });
-  });
-  return out;
-}
-
-/* One row per player. A later screenshot wins, since people change their mind
-   further down the chat, but a choice you made by hand is never overwritten. */
-function addShotRows(found){
-  found.forEach(f => {
-    const had = shotRows.find(r => r.name === f.name);
-    if (had && had.touched) return;
-    if (had) Object.assign(had, f, { touched: false });
-    else shotRows.push(f);
-  });
-  renderShot();
-}
-
-function renderShot(){
-  const list = document.getElementById('shotList');
-  const says = document.getElementById('shotSays');
-  const ins  = shotRows.filter(r => r.in).length;
-  const iffy = shotRows.filter(r => !r.sure).length;
-  document.getElementById('shotActions').hidden = !shotRows.length;
-  document.getElementById('shotApply').hidden   = !shotRows.length;
-  if (!shotRows.length){ list.innerHTML = ''; return; }
-  says.innerHTML = `<b>${shotRows.length} ${shotRows.length === 1 ? 'name' : 'names'} read — ${ins} in, ${shotRows.length - ins} out</b>` +
-    `<span>Tap any one to flip it.${iffy ? ` ${iffy} could not be judged from the reply — those are marked in amber.` : ''}</span>`;
-  list.innerHTML = shotRows.map((r, i) => `
-    <div class="srow">
-      <span class="sname">${esc(r.name)}
-        <span class="said${r.sure ? '' : ' unsure'}">${r.sure ? esc(r.said || '') : 'not sure — check this one'}</span></span>
-      <button class="sflip" data-flip="${i}" data-in="${r.in ? 1 : 0}">${r.in ? 'IN' : 'OUT'}</button>
-    </div>`).join('');
-}
-
-async function runShots(files){
-  const says = document.getElementById('shotSays');
-  document.getElementById('shotBox').hidden = false;
-  says.innerHTML = '<b>Getting the reader ready…</b><span>A few megabytes the first time, then it is kept on your phone.</span>';
-  try { await loadOCR(); }
-  catch (err) {
-    says.innerHTML = '<b>Could not fetch the reader</b><span>It needs the internet the first time you use it. Once it has run once it works offline. You can paste the names instead.</span>';
-    return;
-  }
-  let worker;
-  try {
-    worker = await Tesseract.createWorker('eng');
-    for (let i = 0; i < files.length; i++){
-      says.innerHTML = `<b>Reading ${files.length > 1 ? `screenshot ${i + 1} of ${files.length}` : 'the screenshot'}…</b><span>This takes a few seconds.</span>`;
-      const { data } = await worker.recognize(files[i]);
-      addShotRows(readShotText(data.text));
-    }
-    if (!shotRows.length)
-      says.innerHTML = '<b>No names from your roster turned up</b><span>Make sure the screenshot shows the senders’ names, not just their messages. You can paste the names instead.</span>';
-  } catch (err) {
-    says.innerHTML = '<b>That image could not be read</b><span>Try a clearer screenshot, or paste the names instead.</span>';
-  } finally { if (worker) try { await worker.terminate(); } catch (e) {} }
-}
-
-document.getElementById('shotBtn').onclick = () => {
-  const box = document.getElementById('shotBox');
-  if (shotRows.length){ box.hidden = !box.hidden; return; }
-  document.getElementById('shotIn').click();
-};
-document.getElementById('shotMore').onclick   = () => document.getElementById('shotIn').click();
-document.getElementById('shotCancel').onclick = () => {
-  shotRows = [];
-  document.getElementById('shotBox').hidden = true;
-  document.getElementById('shotIn').value = '';
-  renderShot();
-};
-document.getElementById('shotIn').addEventListener('change', e => {
-  const files = [...(e.target.files || [])];
-  e.target.value = '';
-  if (files.length) runShots(files);
-});
-document.getElementById('shotList').addEventListener('click', e => {
-  const b = e.target.closest('[data-flip]');
-  if (!b) return;
-  const r = shotRows[+b.dataset.flip];
-  r.in = !r.in; r.sure = true; r.touched = true;
-  r.said = r.in ? 'you said in' : 'you said out';
-  renderShot();
-});
-document.getElementById('shotApply').onclick = () => {
-  const names = shotRows.filter(r => r.in).map(r => r.name);
-  S.roster.forEach(p => { p.available = names.includes(p.name); delete p.manual; });
-  document.getElementById('comingHint').textContent =
-    `${names.length} in, ${S.roster.length - names.length} out — read off your screenshot.`;
-  shotRows = [];
-  document.getElementById('shotBox').hidden = true;
-  renderShot();
-  render(); save();
-};
-
 function pastePreview(){
   const r = readPaste(document.getElementById('pasteIn').value);
   const box = document.getElementById('pasteSays');
