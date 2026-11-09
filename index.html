@@ -909,7 +909,7 @@ const fmtRank = r => (Math.round(r * 2) / 2).toFixed(1).replace(/\.0$/, '');
 const pips = r => { const f = Math.floor(r); return '\u25CF'.repeat(f) + (r > f ? '\u25D0' : ''); };
 const dots = r => { const f = Math.floor(r), h = r > f ? 1 : 0;
   return '\u25CF'.repeat(f) + (h ? '\u25D0' : '') + '\u25CB'.repeat(Math.max(0, 5 - f - h)); };
-const showRanks = () => !S.guest && S.organizer === true && !S.hideRanks;
+const showRanks = () => !S.guest && !S.hideRanks;
 
 let chipsCompact = false;
 function rosterHTML(){
@@ -1086,23 +1086,23 @@ function render(){
       '<b class="linkish" id="ownIt">This is my own copy</b>';
   } else st.hidden = true;
 
-  const org = !S.guest && S.organizer === true;
-  const canUnlock = !org && !S.guest && cloudOK() && !!(S.cloud && S.cloud.sheet) && canSeal();
+  const org = !S.guest;                 // a copy handed over on a link is the only one held back
+  const rated = S.organizer === true;   // ...and whether these ratings are real yet
+  const canUnlock = !rated && !S.guest && cloudOK() && !!(S.cloud && S.cloud.sheet) && canSeal();
   document.getElementById('unlockBox').hidden = !canUnlock;
   const rn = document.getElementById('rosterNote');
-  rn.hidden = org || S.guest;
+  rn.hidden = rated || S.guest;
   if (!rn.hidden) rn.textContent = canUnlock
-    ? 'Ratings are hidden on this copy and everyone shows as unrated — this device has not been given the roster yet. Type the organiser code below and it comes down on its own.'
-    : 'Ratings are hidden on this copy, and everyone here shows as unrated — this device has never been given your roster. ' +
-      'To bring them over: on the device that has your ratings press "Copy my roster", send yourself that text, then press "Paste a roster" below and paste it. ' +
-      'The Rankings tab comes back with it.';
+    ? 'Everyone here is showing as 3 — this device has not been given your real ratings yet. Type the code below and they come down on their own.'
+    : 'Everyone here is showing as 3 — this device has not been given your real ratings yet. ' +
+      'On the device that has them press "Copy my roster" under Setup, send yourself that text, then press "Paste a roster" and paste it in.';
   if (org && S.view !== 'ranks') S.view = 'ranks';
   if (!org) S.view = 'chips';
   document.getElementById('viewSeg').hidden = true;
   document.getElementById('privRow').hidden = !org;
   document.getElementById('expBtn').hidden = !org;
-  document.getElementById('shareSection').hidden = S.guest || !org;
-  document.getElementById('capsSection').hidden = S.guest || !org;
+  document.getElementById('shareSection').hidden = !org;
+  document.getElementById('capsSection').hidden = !org;
   renderCaptains();
   const codeOn = !!(S.cloud && S.cloud.code);
   document.getElementById('codeBtn').hidden = !org || !canSeal();
