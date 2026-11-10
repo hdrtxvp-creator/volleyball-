@@ -1694,8 +1694,8 @@ async function syncCheck(){
     haveProj ? c.proj : 'Not set on this device'));
   rows.push(ckRow(haveKey ? 'ok' : 'bad', 'Firebase API key',
     haveKey ? 'set (' + String(c.key).slice(0, 6) + '…)' : 'Not set on this device'));
-  rows.push(ckRow(haveSheet ? 'ok' : 'bad', 'Sheet name',
-    haveSheet ? c.sheet : 'Not set on this device'));
+  rows.push(ckRow(haveSheet ? 'ok' : haveCode ? 'bad' : 'wait', 'Sheet name',
+    haveSheet ? c.sheet : 'Made for you automatically when you save a code — nothing to type'));
   rows.push(ckRow(haveCode ? 'ok' : 'bad', 'Organiser code',
     haveCode ? 'set on this device' : 'Not set — without it nothing is sealed or sent'));
 
