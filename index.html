@@ -220,6 +220,21 @@ button.rattog[aria-pressed="false"]::before{
   background:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.25)
 }
 button.rattog:active{transform:scale(.97)}
+/* The sync check. One line per thing that has to be true, so a plain
+   "nothing is syncing" turns into the one step that is actually missing. */
+#syncReport{margin:12px 0 0;border:1px solid var(--line);border-radius:10px;padding:4px 12px 10px}
+#syncReport h4{font-family:'Archivo',system-ui,sans-serif;font-size:13px;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--slate);margin:12px 0 8px;font-weight:600}
+.ck{display:flex;gap:9px;align-items:flex-start;padding:5px 0;font-size:14px;line-height:1.35}
+.ck i{flex:none;width:17px;height:17px;border-radius:50%;margin-top:2px;font-style:normal;
+  font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;
+  background:var(--go);color:var(--ink)}
+.ck.bad i{background:var(--stop);color:#fff}
+.ck.wait i{background:var(--slate);color:var(--ink)}
+.ck b{font-weight:600}
+.ck span{display:block;font-size:12.5px;color:var(--slate);margin-top:1px}
+#syncReport .fix{font-size:13.5px;line-height:1.4;margin:10px 0 2px;padding:10px 11px;border-radius:8px;
+  background:rgba(242,194,48,.12);border-left:3px solid var(--ball);color:var(--chalk)}
 button.switch{font:inherit;font-size:13px;background:none;border:0;color:var(--slate);cursor:pointer;padding:8px 0 0;text-decoration:underline}
 
 /* settings */
@@ -455,6 +470,8 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <p class="hint" id="codeHint"></p>
   </div>
   <textarea id="friendLink" readonly hidden aria-label="Link for your friend"></textarea>
+  <div id="syncReport" hidden></div>
+  <button class="ghost" id="syncCheck" style="width:100%;margin-top:10px">Check sync</button>
   <button class="switch" id="codeBtn">Set the code</button>
   <button class="switch" id="sheetSetupBtn">Where it is stored</button>
   <p class="spots" id="sheetStatus"></p>
@@ -1630,6 +1647,115 @@ function helperLink(){
   const pack = b64url(JSON.stringify({ p:S.cloud.proj, k:S.cloud.key, s:S.cloud.sheet }));
   return location.origin + location.pathname + '?org=' + pack;
 }
+
+/* ---------- why nothing is syncing ----------
+   Every link in the chain, checked in order and in plain words, ending on the
+   one thing to do next. It really talks to the database rather than trusting
+   what this phone last wrote down, because "it says it synced" is exactly the
+   belief that goes wrong. */
+function ckRow(state, title, note){
+  const mark = state === 'ok' ? '✓' : state === 'bad' ? '!' : '·';
+  const cls  = state === 'ok' ? '' : state === 'bad' ? ' bad' : ' wait';
+  return `<div class="ck${cls}"><i>${mark}</i><b>${esc(title)}${note ? `<span>${esc(note)}</span>` : ''}</b></div>`;
+}
+function whenWords(iso){
+  if (!iso) return '';
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const mins = Math.round((Date.now() - t) / 60000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return mins + ' minutes ago';
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return hrs + (hrs === 1 ? ' hour ago' : ' hours ago');
+  const days = Math.round(hrs / 24);
+  return days + (days === 1 ? ' day ago' : ' days ago');
+}
+
+async function syncCheck(){
+  const out = document.getElementById('syncReport');
+  const c = S.cloud || {};
+  out.hidden = false;
+  out.innerHTML = '<h4>Checking…</h4>';
+
+  const rows = [];
+  let fix = '';
+
+  // --- this device ---
+  rows.push(ckRow('ok', 'This device holds ' + S.roster.length + ' players',
+    S.organizer === true ? 'with their ratings' : 'without ratings — this copy has not been unlocked'));
+
+  if (localOnly())
+    rows.push(ckRow('bad', 'Running on a local address',
+      'Sync and the friend link only work on the real web address.'));
+
+  // --- the four settings ---
+  const haveProj = !!c.proj, haveKey = !!c.key, haveSheet = !!c.sheet, haveCode = !!c.code;
+  rows.push(ckRow(haveProj ? 'ok' : 'bad', 'Firebase project ID',
+    haveProj ? c.proj : 'Not set on this device'));
+  rows.push(ckRow(haveKey ? 'ok' : 'bad', 'Firebase API key',
+    haveKey ? 'set (' + String(c.key).slice(0, 6) + '…)' : 'Not set on this device'));
+  rows.push(ckRow(haveSheet ? 'ok' : 'bad', 'Sheet name',
+    haveSheet ? c.sheet : 'Not set on this device'));
+  rows.push(ckRow(haveCode ? 'ok' : 'bad', 'Organiser code',
+    haveCode ? 'set on this device' : 'Not set — without it nothing is sealed or sent'));
+
+  if (!haveProj || !haveKey){
+    fix = 'This device has no Firebase project, so nothing it does ever leaves it. Open “Where it is stored” below and put in the project ID and API key. If your other phone already syncs, use the exact same two values.';
+  } else if (!haveSheet){
+    fix = 'Open “Where it is stored” below and save again — that is what names the sheet.';
+  } else if (!haveCode){
+    fix = 'Open “Set the code” below and save a code. The roster is sealed with it, so without one there is nothing to send.';
+  }
+
+  // --- can it actually reach the database ---
+  if (haveProj && haveKey && haveSheet){
+    try {
+      const v = await sheetApi().getVault(c.sheet);
+      rows.push(ckRow('ok', 'The database answered', 'Your project is reachable from this device.'));
+      if (!v){
+        rows.push(ckRow('bad', 'Nothing has been sealed up there yet',
+          'The sheet is empty, so there is nothing for another device to pull.'));
+        if (!fix) fix = 'Nothing has been uploaded yet. Change any rating on the device that has them — that pushes the roster up — then check again here.';
+      } else {
+        const mine = c.synced;
+        const same = mine && v.when === mine;
+        rows.push(ckRow('ok', 'A sealed roster is up there',
+          'Last written ' + (whenWords(v.when) || 'at an unknown time') + '.'));
+        if (c.behind){
+          rows.push(ckRow('bad', 'This device has changes that never went up',
+            'The last push failed, most likely no signal at the time.'));
+          if (!fix) fix = 'This device is ahead of the database. Change any rating here and it will try again.';
+        } else if (same){
+          rows.push(ckRow('ok', 'This device is in step', 'What is up there is what is here.'));
+        } else if (mine && v.when > mine){
+          rows.push(ckRow('wait', 'The database is newer than this device',
+            'Close the app fully and reopen it — it catches up on the way in.'));
+          if (!fix) fix = 'Another device has newer changes. Close this app completely and reopen it to pull them down.';
+        } else {
+          rows.push(ckRow('wait', 'This device has never pulled from up there',
+            'It has a project but has not been unlocked with the code.'));
+          if (!fix) fix = 'This device has not been unlocked. Open the friend link, type the organiser code, and the roster comes down.';
+        }
+      }
+    } catch (err) {
+      rows.push(ckRow('bad', 'Could not reach the database',
+        'Either no internet right now, the project ID or key is wrong, or the Firestore rules were never published.'));
+      if (!fix) fix = 'The app could not reach your Firebase project. Check you are online. If you are, the project ID or key is wrong, or the rules in the Firestore Rules tab were never published.';
+    }
+  }
+
+  if (!fix) fix = 'Everything on this device checks out. If a second device is still out of step, run this same check on that one — the problem is there, not here.';
+
+  out.innerHTML = '<h4>Sync check</h4>' + rows.join('') +
+    `<p class="fix">${esc(fix)}</p>` +
+    `<div class="ck wait"><i>·</i><b>Who is coming this week never syncs<span>By design. Ratings, captains and rules travel; this week’s in-and-out list stays on each device.</span></b></div>`;
+}
+document.getElementById('syncCheck').onclick = async e => {
+  const btn = e.currentTarget;
+  btn.disabled = true;
+  try { await syncCheck(); } finally { btn.disabled = false; }
+};
+
 document.getElementById('codeBtn').onclick = () => {
   const box = document.getElementById('codeSetup');
   box.hidden = !box.hidden;
