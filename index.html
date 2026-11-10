@@ -1558,7 +1558,14 @@ async function sealRoster(code){
   const key  = await codeKey(code, salt);
   const body = JSON.stringify({
     r: S.roster.map(p => [p.name, p.rank, p.games || 0, p.sits || 0, p.wins || 0, p.losses || 0]),
-    apart: S.apart, together: S.together, captains: S.captains
+    apart: S.apart, together: S.together, captains: S.captains,
+    /* This week goes up as well, so every device shows the same thing: who is
+       coming, the sides once picked, and how many of them there are. */
+    week: {
+      playing: S.roster.filter(p => p.available).map(p => p.name),
+      history: S.history, results: S.results, note: S.note,
+      n: S.week, teams: S.teams, size: S.size, sizes: S.sizes
+    }
   });
   const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, TE.encode(body));
   return { vault: toB64(ct), vsalt: toB64(salt), viv: toB64(iv) };
@@ -1594,12 +1601,25 @@ async function vaultPull(code){
   const data = await openRoster(code, v);      // throws if the code is wrong
   const byName = {};
   S.roster.forEach(p => { byName[p.name] = p; });
+  /* An older vault has no week in it. Then this device keeps its own, rather
+     than having everyone marked out by a device that never knew about them. */
+  const w = data.week, coming = w && Array.isArray(w.playing) ? w.playing : null;
   S.roster = data.r.map(a => {
     const had = byName[a[0]] || {};
     return { name:a[0], rank:a[1], games:a[2], sits:a[3], wins:a[4], losses:a[5],
-             available: had.available === undefined ? false : had.available,
+             available: coming ? coming.includes(a[0])
+                      : had.available === undefined ? false : had.available,
              lastWeek: had.lastWeek === undefined ? null : had.lastWeek };
   });
+  if (w){
+    if (Array.isArray(w.history)) S.history = w.history;
+    if (Array.isArray(w.results)) S.results = w.results;
+    if (typeof w.note === 'string') S.note = w.note;
+    if (typeof w.n === 'number')     S.week  = w.n;
+    if (typeof w.teams === 'number') S.teams = w.teams;
+    if (typeof w.size === 'number')  S.size  = w.size;
+    if (Array.isArray(w.sizes))      S.sizes = w.sizes;
+  }
   if (Array.isArray(data.captains)) S.captains = data.captains;
   if (Array.isArray(data.apart))    S.apart = data.apart;
   if (Array.isArray(data.together)) S.together = data.together;
@@ -1748,7 +1768,7 @@ async function syncCheck(){
 
   out.innerHTML = '<h4>Sync check</h4>' + rows.join('') +
     `<p class="fix">${esc(fix)}</p>` +
-    `<div class="ck wait"><i>·</i><b>Who is coming this week never syncs<span>By design. Ratings, captains and rules travel; this week’s in-and-out list stays on each device.</span></b></div>`;
+    `<div class="ck"><i>\u2713</i><b>This week travels too<span>Who is coming and the sides once picked, along with the ratings, captains and rules. Each device catches up when you open it, and again when you come back to it.</span></b></div>`;
 }
 document.getElementById('syncCheck').onclick = async e => {
   const btn = e.currentTarget;
@@ -2286,21 +2306,34 @@ if (orgLink && S.organizer !== true){
     'This link points at the group\'s sheet. Type the organiser code and the roster and ratings come down.';
   if (u) setTimeout(() => u.focus(), 200);
 }
-/* A device that already knows the code catches up on the way in — but only if
-   the database is genuinely ahead of it. A phone whose own last change never
-   made it up stays put and pushes instead, so nobody\'s edits get undone. */
-if (S.organizer === true && S.cloud && S.cloud.code && S.cloud.sheet && cloudOK() && canSeal()){
-  (async () => {
-    try {
-      if (S.cloud.behind){ vaultPush(); return; }
-      const v = await sheetApi().getVault(S.cloud.sheet);
-      if (!v || !v.when || v.when === S.cloud.synced) return;
-      if (S.cloud.synced && v.when < S.cloud.synced) return;
-      await vaultPull(S.cloud.code);
-      render(); save();
-    } catch(e){ /* nothing to catch up to, or no signal */ }
-  })();
+/* A device catches up on the way in, and again every time you come back to it —
+   switch from the phone to the iPad and the iPad is already right. It only takes
+   what the database has if the database is genuinely ahead; a device whose own
+   last change never made it up stays put and pushes instead, so nobody's edits
+   get undone. */
+let catching = false, caughtAt = 0;
+async function catchUp(force){
+  if (catching) return;
+  if (!force && Date.now() - caughtAt < 4000) return;   // don't hammer on every flicker of focus
+  if (!(S.organizer === true && S.cloud && S.cloud.code && S.cloud.sheet && cloudOK() && canSeal())) return;
+  catching = true;
+  try {
+    if (S.cloud.behind){ vaultPush(); return; }
+    const v = await sheetApi().getVault(S.cloud.sheet);
+    if (!v || !v.when || v.when === S.cloud.synced) return;
+    if (S.cloud.synced && v.when < S.cloud.synced) return;
+    await vaultPull(S.cloud.code);
+    render();
+    /* Write to this device, but do not bounce it straight back up: the database
+       already has exactly this, and a push would only move the clock on. */
+    try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){}
+  } catch(e){ /* nothing to catch up to, or no signal */ }
+  finally { catching = false; caughtAt = Date.now(); }
 }
+catchUp(true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) catchUp(); });
+window.addEventListener('focus', () => catchUp());
+window.addEventListener('online', () => catchUp(true));
 if (fromLink){ try { history.replaceState(null, '', location.pathname + location.search); } catch(e){} }
 </script>
 <script>
