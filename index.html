@@ -405,6 +405,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
       <button class="ghost" id="allIn">Everyone in</button>
       <button class="ghost" id="allOut">Everyone out</button>
       <button class="ghost" id="pasteBtn">Paste who's coming</button>
+      <button class="ghost" id="clearBtn" hidden>Clear the teams</button>
     </div>
     <div id="pasteBox" hidden style="margin-top:10px">
       <textarea id="pasteIn" placeholder="Paste the names — one per line, or separated by commas"></textarea>
@@ -530,7 +531,6 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <textarea id="shareText" readonly hidden aria-label="This week's teams as text"></textarea>
   <div class="fitrow">
     <button class="ghost" id="imgBtn">Make a picture</button>
-    <button class="ghost" id="clearBtn">Clear the teams</button>
   </div>
   <div id="imgWrap" hidden>
     <canvas id="shot"></canvas>
@@ -1134,6 +1134,7 @@ function render(){
   sp.classList.toggle('warn', small);
 
   const last = S.history[S.history.length - 1];
+  document.getElementById('clearBtn').hidden = !last;
   const ls = document.getElementById('lineupSection');
   /* Sides belong to the people who are coming. Mark everybody out and there is
      no week left to show, so the teams go rather than sit there looking current. */
