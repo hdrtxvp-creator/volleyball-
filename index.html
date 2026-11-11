@@ -530,6 +530,7 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <textarea id="shareText" readonly hidden aria-label="This week's teams as text"></textarea>
   <div class="fitrow">
     <button class="ghost" id="imgBtn">Make a picture</button>
+    <button class="ghost" id="clearBtn">Clear the teams</button>
   </div>
   <div id="imgWrap" hidden>
     <canvas id="shot"></canvas>
@@ -1100,6 +1101,16 @@ function render(){
     : codeOn
     ? 'The code is on and this device is in step. Any other device shows the same thing the moment you type this code on it — nothing to send, no link to copy.'
     : 'Make one up: six characters or more, and not something the group could guess. It is what keeps the ratings unreadable to anyone else, and it is what every one of your devices will use to find them.';
+  /* This used to keep whatever the last button press wrote, so "All 29 marked
+     as coming" sat there while the list above said 0 of 29. */
+  const ch2 = document.getElementById('comingHint');
+  const nIn = S.roster.filter(p => p.available).length;
+  if (ch2.dataset.said === '1'){ delete ch2.dataset.said; } else
+    ch2.textContent = nIn === 0
+      ? 'Nobody is marked as coming. Tap the names above, or paste the replies out of WhatsApp.'
+      : nIn === S.roster.length
+      ? `All ${S.roster.length} marked as coming.`
+      : `${nIn} of ${S.roster.length} marked as coming.`;
   document.getElementById('sheetHint').textContent = '';
   document.getElementById('dlBtn').hidden = !org;
   const rt = document.getElementById('ratToggle');
@@ -1124,7 +1135,11 @@ function render(){
 
   const last = S.history[S.history.length - 1];
   const ls = document.getElementById('lineupSection');
-  if (last){
+  /* Sides belong to the people who are coming. Mark everybody out and there is
+     no week left to show, so the teams go rather than sit there looking current. */
+  if (last && avail === 0){
+    ls.hidden = true;
+  } else if (last){
     ls.hidden = false;
     const sides = last.sides || [last.picked];
     if (sides.length > 2) fixSession(last);
@@ -1463,15 +1478,28 @@ document.getElementById('imgBtn').onclick = async e => {
 
 
 /* ---------- who's coming this week ---------- */
+/* A line this writes stands for one redraw, then the count takes over again. */
+function comingSays(text){
+  const h = document.getElementById('comingHint');
+  h.textContent = text; h.dataset.said = '1';
+}
 document.getElementById('allIn').onclick = () => {
   S.roster.forEach(p => { p.available = true; if (S.cloud && S.cloud.sheet) p.manual = true; });
-  document.getElementById('comingHint').textContent = `All ${S.roster.length} marked as coming.`;
   render(); save();
 };
 document.getElementById('allOut').onclick = () => {
   S.roster.forEach(p => { p.available = false; if (S.cloud && S.cloud.sheet) p.manual = true; });
-  document.getElementById('comingHint').textContent = 'Everyone is out — now tap the ones who are coming.';
+  comingSays('Everyone is out — now tap the ones who are coming.');
   render(); save();
+};
+/* Throw the sides away without touching who is coming, so you can pick again. */
+document.getElementById('clearBtn').onclick = () => {
+  if (!S.history.length) return;
+  ask('Clear this week\'s teams? Who is coming stays as it is, and you can pick again.', () => {
+    S.history = []; S.results = []; S.note = '';
+    const w = document.getElementById('imgWrap'); if (w) w.hidden = true;
+    render(); save();
+  });
 };
 document.getElementById('pasteBtn').onclick = () => {
   const box = document.getElementById('pasteBox');
@@ -1514,17 +1542,15 @@ document.getElementById('pasteIn').addEventListener('input', pastePreview);
 document.getElementById('pasteApply').onclick = () => {
   const r = pastePreview();
   if (!r.names.length){
-    document.getElementById('comingHint').textContent =
-      'No roster names found in that. Check the spelling, or mark people by tapping their names.';
+    comingSays('No roster names found in that. Check the spelling, or mark people by tapping their names.');
     return;
   }
   S.roster.forEach(p => { p.available = r.names.includes(p.name); delete p.manual; });
   document.getElementById('pasteIn').value = '';
   document.getElementById('pasteSays').hidden = true;
   document.getElementById('pasteBox').hidden = true;
-  document.getElementById('comingHint').textContent =
-    `${r.names.length} in, ${S.roster.length - r.names.length} out.` +
-    (r.missed.length ? ` ${r.missed.length} line(s) did not match anybody.` : '');
+  comingSays(`${r.names.length} in, ${S.roster.length - r.names.length} out.` +
+    (r.missed.length ? ` ${r.missed.length} line(s) did not match anybody.` : ''));
   render(); save();
 };
 
