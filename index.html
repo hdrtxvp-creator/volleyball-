@@ -1090,7 +1090,12 @@ function render(){
   document.getElementById('shareLede').textContent = cloudOK()
     ? 'One code is the whole thing. Type it here, then type the same code on your laptop, your iPad and your friend\'s phone — they will all show the same roster, the same ratings and the same week.'
     : 'This device has no database to talk to. Press "Where it is stored" and put one in.';
-  document.getElementById('codeHint').textContent = !cloudOK()
+  const ch = document.getElementById('codeHint');
+  /* Something it just told you -- a refusal, a result -- outranks the standing
+     blurb. The screen redraws for all sorts of reasons, and wiping the reason
+     your code was refused is how the app ends up looking like it changed it. */
+  if (ch.dataset.said === '1'){ /* leave it */ } else
+  ch.textContent = !cloudOK()
     ? 'Press "Where it is stored" first.'
     : codeOn
     ? 'The code is on and this device is in step. Any other device shows the same thing the moment you type this code on it — nothing to send, no link to copy.'
@@ -1847,10 +1852,30 @@ document.getElementById('syncCheck').onclick = async e => {
   try { await syncCheck(); } finally { btn.disabled = false; }
 };
 
+function codeSays(text){
+  const h = document.getElementById('codeHint');
+  h.textContent = text;
+  h.dataset.said = '1';
+}
+document.getElementById('codeIn').addEventListener('input', e => {
+  const v = e.target.value.trim();
+  const saved = (S.cloud && S.cloud.code) || '';
+  if (!v && saved){ codeSays('Clear the box and type a new one to change it, or leave it as it is.'); return; }
+  if (v === saved && saved){ codeSays('This is the code already in use on this device.'); return; }
+  codeSays(codeAdvice(v) || 'Type a code: six characters or more.');
+});
+document.getElementById('codeIn').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('codeSave').click();
+});
 document.getElementById('codeBtn').onclick = () => {
   const box = document.getElementById('codeSetup');
   box.hidden = !box.hidden;
-  if (!box.hidden) document.getElementById('codeIn').value = (S.cloud && S.cloud.code) || '';
+  const h = document.getElementById('codeHint');
+  delete h.dataset.said;
+  if (!box.hidden){
+    document.getElementById('codeIn').value = (S.cloud && S.cloud.code) || '';
+    render();
+  }
 };
 /* Before anything replaces this device's players, keep what was here. One step
    back is all anyone wants: the moment before they typed the code. */
@@ -1875,10 +1900,32 @@ function undoBack(){
 const hasRealRanks = () => S.organizer === true &&
   S.roster.some(p => p.rank !== 3 || (p.games || 0) > 0);
 
+/* Say how it is going while they type, rather than refusing after the fact.
+   Nobody should press a button to find out a rule they could have been told. */
+function codeAdvice(v){
+  if (!v) return '';
+  if (v.length < 6) return (6 - v.length) + ' more character' + (6 - v.length === 1 ? '' : 's') + ' to go — six is the minimum.';
+  if (WEAK.test(v) || /^(.)\1+$/.test(v) || /^0?123456789?0?$/.test(v))
+    return 'Too easy to guess. The app address is public, so this is the only thing keeping your ratings private.';
+  if (/^\d+$/.test(v)) return 'Numbers only is weaker than it looks. A word or two mixed in would be better.';
+  return 'That will do. Press "Save the code".';
+}
+
+/* Codes anyone would try first. The app address is public, and the code is the
+   only thing between a passer-by and everyone's ratings, so these are refused
+   outright rather than warned about. */
+const WEAK = /^(1234|12345|123456|1234567|12345678|123456789|password|passw0rd|volleyball|volleyball1|letmein|qwerty|qwerty123|abc123|abcdef|111111|000000|aaaaaa|sunday|sunday1|monday|thursday|volley1|volley123|football|iloveyou|admin1|welcome|welcome1)$/i;
+
 document.getElementById('codeSave').onclick = async () => {
   const v = document.getElementById('codeIn').value.trim();
-  const hint = document.getElementById('codeHint');
-  if (v.length < 6){ hint.textContent = 'Make it at least six characters — a short word and a number is plenty.'; return; }
+  /* Everything this handler says is meant to stay on screen until you act
+     again, so it goes through codeSays rather than being written straight in
+     where the next redraw would wipe it. */
+  const hint = { set textContent(t){ codeSays(t); } };
+  if (v.length < 6){ hint.textContent = 'That is only ' + v.length + ' character' + (v.length === 1 ? '' : 's') + '. It needs six or more, so nothing was changed — the code already on this device is still the one in the box.'; return; }
+  if (WEAK.test(v) || /^(.)\1+$/.test(v) || /^0?123456789?0?$/.test(v)){
+    hint.textContent = 'That one would be guessed on the first try, and the app address is public. Pick two words that have nothing to do with each other, plus a number.'; return;
+  }
   if (!cloudOK()){ hint.textContent = 'This device has no database to talk to. Press "Where it is stored" and put one in.'; return; }
   hint.textContent = 'Looking…';
   try {
