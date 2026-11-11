@@ -188,7 +188,7 @@ details.fold>:not(summary)>p:first-child{display:none}
 .addbox>p{margin:0 0 8px;font-size:13px;color:var(--slate)}
 .add{display:flex;gap:8px}
 #sheetSetup:not([hidden]){margin-top:10px;display:grid;gap:8px}
-input[type=text],#sheetSetup input,textarea{
+input[type=text],input:not([type]),#sheetSetup input,textarea{
   flex:1;background:var(--ink);border:1px solid var(--line);border-radius:10px;
   color:var(--chalk);font:inherit;font-size:15px;padding:10px 12px;width:100%
 }
@@ -464,12 +464,14 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
     <input id="codeIn" placeholder="A code you make up — 6 characters or more" autocomplete="off" spellcheck="false">
     <div class="fitrow">
       <button class="ghost" id="codeSave">Save the code</button>
-      <button class="ghost" id="codeLink">Copy the link for your friend</button>
       <button class="ghost" id="codeOff">Turn it off</button>
     </div>
     <p class="hint" id="codeHint"></p>
   </div>
-  <textarea id="friendLink" readonly hidden aria-label="Link for your friend"></textarea>
+  <div id="rollbackBox" hidden>
+    <p class="hint" id="rollbackSays" style="margin:10px 0 6px"></p>
+    <button class="ghost" id="rollbackBtn" style="width:100%">Put this device back how it was</button>
+  </div>
   <div id="syncReport" hidden></div>
   <button class="ghost" id="syncCheck" style="width:100%;margin-top:10px">Check sync</button>
   <button class="switch" id="codeBtn">Set the code</button>
@@ -1070,6 +1072,13 @@ function render(){
   document.getElementById('viewSeg').hidden = true;
   document.getElementById('privRow').hidden = !org;
   document.getElementById('expBtn').hidden = !org;
+  const ub = document.getElementById('rollbackBox');
+  ub.hidden = !(org && S.undo && S.undo.roster);
+  if (!ub.hidden)
+    document.getElementById('rollbackSays').textContent =
+      S.undo.why === 'pull'
+        ? 'This device was replaced with the stored roster. The ' + S.undo.roster.length + ' players that were here are still kept.'
+        : 'This device\'s players were sent up, over what was stored. What was here before is still kept.';
   document.getElementById('shareSection').hidden = !org;
   document.getElementById('capsSection').hidden = !org;
   renderCaptains();
@@ -1078,15 +1087,14 @@ function render(){
   document.getElementById('codeBtn').textContent = codeOn ? 'Set the code — on' : 'Set the code';
   if (!org) document.getElementById('codeSetup').hidden = true;
   document.getElementById('codeOff').hidden = !codeOn;
-  document.getElementById('codeLink').classList.toggle('notyet', !codeOn);
   document.getElementById('shareLede').textContent = cloudOK()
-    ? 'One code, told to your friend once. Their phone then shows the same roster and the same ratings as yours, and the two stay in step. Nobody else can read them.'
-    : 'Not set up yet. Press "Where it is stored" and paste in your Firebase project ID and web API key.';
+    ? 'One code is the whole thing. Type it here, then type the same code on your laptop, your iPad and your friend\'s phone — they will all show the same roster, the same ratings and the same week.'
+    : 'This device has no database to talk to. Press "Where it is stored" and put one in.';
   document.getElementById('codeHint').textContent = !cloudOK()
-    ? 'Add the project id and key under "Where it is stored" first.'
+    ? 'Press "Where it is stored" first.'
     : codeOn
-    ? 'The code is on. Press "Copy the link for your friend", send them that, and tell them the code in a separate message.'
-    : 'Make up a code and whoever picks the sides sees your ratings on their own phone. Without it they are unreadable, even straight out of the database.';
+    ? 'The code is on and this device is in step. Any other device shows the same thing the moment you type this code on it — nothing to send, no link to copy.'
+    : 'Make one up: six characters or more, and not something the group could guess. It is what keeps the ratings unreadable to anyone else, and it is what every one of your devices will use to find them.';
   document.getElementById('sheetHint').textContent = '';
   document.getElementById('dlBtn').hidden = !org;
   const rt = document.getElementById('ratToggle');
@@ -1173,6 +1181,32 @@ function commitRename(raw){
 /* ---------- asking before something irreversible ----------
    A published page can be sandboxed so the browser's own confirm box never
    appears and silently answers no, which quietly broke every one of these. */
+/* The same box as ask(), but awaited, and with the choice spelled out on both
+   buttons — "Yes/Cancel" is no help when both ways round are reasonable. */
+function choose(title, body, yes, no){
+  return new Promise(done => {
+    const old = document.getElementById('askWrap');
+    if (old) old.remove();
+    const w = document.createElement('div');
+    w.id = 'askWrap';
+    w.innerHTML = `<div class="askbox" role="dialog" aria-modal="true">
+        <p><b>${esc(title)}</b></p>
+        <p style="font-size:14px;color:var(--slate);margin-top:-4px">${esc(body)}</p>
+        <div class="fitrow">
+          <button class="ghost" data-a="no">${esc(no)}</button>
+          <button class="ghost yes" data-a="yes">${esc(yes)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(w);
+    const close = v => { w.remove(); done(v); };
+    w.addEventListener('click', e => {
+      const b = e.target.closest('[data-a]');
+      if (b) return close(b.dataset.a === 'yes');
+    });
+    const y = w.querySelector('[data-a="yes"]'); if (y) y.focus();
+  });
+}
+
 function ask(text, onYes){
   const old = document.getElementById('askWrap');
   if (old) old.remove();
@@ -1583,9 +1617,14 @@ function vaultPush(){
   clearTimeout(pushTimer);
   pushTimer = setTimeout(async () => {
     if (pushing) return;
+    /* Check again, here and now. Between the change that scheduled this and
+       this moment the code can have been cleared or swapped — by an undo, say —
+       and sealing with the wrong one leaves a block nobody can open. */
+    if (!S.cloud || !S.cloud.code || !S.cloud.sheet || !cloudOK() || !canSeal()) return;
+    const code = S.cloud.code, sheet = S.cloud.sheet;
     pushing = true;
     try {
-      const when = await sheetApi().putVault(S.cloud.sheet, await sealRoster(S.cloud.code));
+      const when = await sheetApi().putVault(sheet, await sealRoster(code));
       S.cloud.synced = when; S.cloud.behind = false;
     } catch(e){
       S.cloud.behind = true;          // this phone is ahead of the database
@@ -1630,6 +1669,20 @@ async function vaultPull(code){
   return S.roster.length;
 }
 
+/* Where the group's data lives. These two identify the Firebase project and
+   nothing more — every Firebase web app ships them in its page source. What
+   keeps the ratings private is the code: the roster is encrypted with it before
+   it leaves the phone, and the document it sits in is named after it, so without
+   the code there is nothing to read and nothing to find. */
+const HOME = { proj: 'volleyball-roster', key: 'AIzaSyBwR2mrVJ8O101Ae7P1lgsjCUUhHsR7M8g' };
+
+/* The code decides where the data lives, so every device that knows the code
+   finds the same place with nothing else to pass around. */
+async function sheetFor(code){
+  const h = await crypto.subtle.digest('SHA-256', TE.encode('volleyball|sheet|' + code));
+  return [...new Uint8Array(h)].slice(0, 12).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 const cloudOK = () => !!(S.cloud && S.cloud.proj && S.cloud.key);
 const sheetApi = () => firestore(S.cloud.proj, S.cloud.key);
 
@@ -1662,12 +1715,6 @@ document.getElementById('sbSave').onclick = () => {
 };
 
 /* ---------- the organiser code, the buttons ---------- */
-function helperLink(){
-  if (!cloudOK() || !S.cloud.sheet) return '';
-  const pack = b64url(JSON.stringify({ p:S.cloud.proj, k:S.cloud.key, s:S.cloud.sheet }));
-  return location.origin + location.pathname + '?org=' + pack;
-}
-
 /* ---------- why nothing is syncing ----------
    Every link in the chain, checked in order and in plain words, ending on the
    one thing to do next. It really talks to the database rather than trusting
@@ -1714,17 +1761,17 @@ async function syncCheck(){
     haveProj ? c.proj : 'Not set on this device'));
   rows.push(ckRow(haveKey ? 'ok' : 'bad', 'Firebase API key',
     haveKey ? 'set (' + String(c.key).slice(0, 6) + '…)' : 'Not set on this device'));
-  rows.push(ckRow(haveSheet ? 'ok' : haveCode ? 'bad' : 'wait', 'Sheet name',
-    haveSheet ? c.sheet : 'Made for you automatically when you save a code — nothing to type'));
+  rows.push(ckRow(haveSheet ? 'ok' : haveCode ? 'bad' : 'wait', 'Where your data sits',
+    haveSheet ? 'worked out from your code' : 'Worked out from your code — nothing to type'));
   rows.push(ckRow(haveCode ? 'ok' : 'bad', 'Organiser code',
     haveCode ? 'set on this device' : 'Not set — without it nothing is sealed or sent'));
 
   if (!haveProj || !haveKey){
-    fix = 'This device has no Firebase project, so nothing it does ever leaves it. Open “Where it is stored” below and put in the project ID and API key. If your other phone already syncs, use the exact same two values.';
+    fix = 'This device has no database to talk to, so nothing it does ever leaves it. Open “Where it is stored” below and put a project in.';
   } else if (!haveSheet){
     fix = 'Open “Where it is stored” below and save again — that is what names the sheet.';
   } else if (!haveCode){
-    fix = 'Open “Set the code” below and save a code. The roster is sealed with it, so without one there is nothing to send.';
+    fix = 'Open “Set the code” below and type your code. That is the whole setup — the same code on every device puts them all on the same roster.';
   }
 
   // --- can it actually reach the database ---
@@ -1770,6 +1817,17 @@ async function syncCheck(){
     `<p class="fix">${esc(fix)}</p>` +
     `<div class="ck"><i>\u2713</i><b>This week travels too<span>Who is coming and the sides once picked, along with the ratings, captains and rules. Each device catches up when you open it, and again when you come back to it.</span></b></div>`;
 }
+document.getElementById('rollbackBtn').onclick = () => {
+  const n = (S.undo && S.undo.roster || []).length;
+  ask('Put this device back to the ' + n + ' players it had before? Whatever is stored stays as it is.', () => {
+    if (!undoBack()) return;
+    /* Stepping back leaves this device out of step on purpose, so it does not
+       quietly shove the old roster over the one everyone else now has. */
+    S.cloud.code = ''; S.cloud.synced = ''; S.cloud.behind = false;
+    render(); save();
+    sheetMsg('Put back. This device is no longer on a code — type one again when you have decided which roster you want.');
+  });
+};
 document.getElementById('syncCheck').onclick = async e => {
   const btn = e.currentTarget;
   btn.disabled = true;
@@ -1781,39 +1839,79 @@ document.getElementById('codeBtn').onclick = () => {
   box.hidden = !box.hidden;
   if (!box.hidden) document.getElementById('codeIn').value = (S.cloud && S.cloud.code) || '';
 };
+/* Before anything replaces this device's players, keep what was here. One step
+   back is all anyone wants: the moment before they typed the code. */
+function keepUndo(why){
+  S.undo = {
+    why, when: new Date().toISOString(),
+    roster: JSON.parse(JSON.stringify(S.roster)),
+    captains: S.captains, apart: S.apart, together: S.together,
+    history: S.history, organizer: S.organizer
+  };
+}
+function undoBack(){
+  const u = S.undo;
+  if (!u) return false;
+  S.roster = u.roster; S.captains = u.captains; S.apart = u.apart;
+  S.together = u.together; S.history = u.history; S.organizer = u.organizer;
+  S.undo = null;
+  return true;
+}
+/* Ratings somebody actually set, as opposed to the 3 every new player starts on.
+   Used only to decide whether replacing this device needs asking about first. */
+const hasRealRanks = () => S.organizer === true &&
+  S.roster.some(p => p.rank !== 3 || (p.games || 0) > 0);
+
 document.getElementById('codeSave').onclick = async () => {
   const v = document.getElementById('codeIn').value.trim();
   const hint = document.getElementById('codeHint');
   if (v.length < 6){ hint.textContent = 'Make it at least six characters — a short word and a number is plenty.'; return; }
-  if (!cloudOK()){ hint.textContent = 'Add the project id and key under "Where it is stored" first.'; return; }
-  if (!S.cloud.sheet) S.cloud.sheet = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-  S.cloud.code = v;
-  hint.textContent = 'Sealing the roster…';
+  if (!cloudOK()){ hint.textContent = 'This device has no database to talk to. Press "Where it is stored" and put one in.'; return; }
+  hint.textContent = 'Looking…';
   try {
-    await sheetApi().putVault(S.cloud.sheet, await sealRoster(v));
-    render(); save();
-    hint.textContent = 'Saved. Press "Copy the link for your friend", send them that, and tell them the code in a separate message.';
+    /* The code names the place, so every device that knows it lands on the same
+       one with nothing else to pass around. */
+    S.cloud.sheet = await sheetFor(v);
+    const there = await sheetApi().getVault(S.cloud.sheet);
+
+    if (there){
+      /* Something is already stored under this code. Make sure the code really
+         opens it before touching anything on this device. */
+      try { await openRoster(v, there); }
+      catch (e){
+        hint.textContent = 'There is a roster stored under that code, but this code will not open it. Check for a typo.';
+        return;
+      }
+      if (hasRealRanks() && !await choose(
+            'Which one counts?',
+            'A roster is already stored under this code. You can replace this device with it, '
+            + 'or keep the ' + S.roster.length + ' players here and send those up instead. Either way you can undo it.',
+            'Bring that one down', 'Keep this device')){
+        /* They would rather this device be the one that counts. */
+        keepUndo('upload');
+        await sheetApi().putVault(S.cloud.sheet, await sealRoster(v));
+        S.cloud.code = v; S.organizer = true; S.guest = false;
+        render(); save();
+        hint.textContent = 'Kept this device\'s players and sent them up instead. Any other device on this code picks them up next time it opens.';
+        return;
+      }
+      keepUndo('pull');
+      S.cloud.code = v;
+      const n = await vaultPull(v);
+      render(); save();
+      hint.textContent = n + ' players came down, with their ratings. Every device on this code now shows the same thing.';
+    } else {
+      /* Nothing stored yet — this device becomes the one everything comes from. */
+      S.cloud.code = v;
+      await sheetApi().putVault(S.cloud.sheet, await sealRoster(v));
+      S.organizer = true; S.guest = false;
+      render(); save();
+      hint.textContent = 'Set up. Type the same code on your other devices and they will show exactly this.';
+    }
   } catch(err){
     S.cloud.code = '';
     hint.textContent = 'That did not reach the database. Check your signal and try again.';
   }
-};
-document.getElementById('codeLink').onclick = async e => {
-  const btn = e.currentTarget;
-  const link = helperLink();
-  const hint = document.getElementById('codeHint');
-  if (!link || !S.cloud.code){ hint.textContent = 'Save a code first.'; return; }
-  if (localOnly()){ hint.textContent = 'This copy is running on a local address, so the link only works on this computer.'; return; }
-  try {
-    await navigator.clipboard.writeText(link);
-    btn.textContent = 'Copied';
-    hint.textContent = 'Link copied. Send the code in a different message — the two together in one place is the same as no code at all.';
-  } catch(err){
-    const box = document.getElementById('friendLink');
-    box.hidden = false; box.value = link; box.focus(); box.select();
-    hint.textContent = 'Your browser would not let the app copy. The link is in the box above — select it and copy by hand.';
-  }
-  setTimeout(() => { btn.textContent = 'Copy the link for your friend'; }, 2000);
 };
 document.getElementById('codeOff').onclick = () => {
   ask('Turn the organiser code off? Phones that already unlocked keep the roster they have, but they stop getting your changes.', () => {
@@ -2290,6 +2388,12 @@ if (!fromLink){
   }
 }
 if (!S.roster.length){ importRoster(SEED); if (typeof S.organizer !== 'boolean') S.organizer = false; }
+/* A device that was never set up by hand gets the built-in project, so the code
+   is the only thing anyone has to type. One already pointed somewhere else is
+   left alone. */
+S.cloud = S.cloud || { proj:'', key:'', page:'', sheet:'', week:'' };
+if (!S.cloud.proj) S.cloud.proj = HOME.proj;
+if (!S.cloud.key)  S.cloud.key  = HOME.key;
 if (orgLink){
   S.cloud = S.cloud || {};
   S.cloud.proj = orgLink.p; S.cloud.key = orgLink.k; S.cloud.sheet = orgLink.s;
