@@ -1686,6 +1686,10 @@ async function sheetFor(code){
 const cloudOK = () => !!(S.cloud && S.cloud.proj && S.cloud.key);
 const sheetApi = () => firestore(S.cloud.proj, S.cloud.key);
 
+/* A copy running inside somebody else's page — a preview pane, an embed — is
+   not allowed to call out to the database, however correct its settings are. */
+const inFrame = () => { try { return window.top !== window.self; } catch(e){ return true; } };
+
 const localOnly = () => location.protocol === 'file:' ||
   /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const sheetMsg = (t, warn) => {
@@ -1751,6 +1755,9 @@ async function syncCheck(){
   rows.push(ckRow('ok', 'This device holds ' + S.roster.length + ' players',
     S.organizer === true ? 'with their ratings' : 'without ratings — this copy has not been unlocked'));
 
+  if (inFrame())
+    rows.push(ckRow('bad', 'This is a preview copy',
+      'Previews are sealed off from the outside, so nothing here can sync whatever the settings say.'));
   if (localOnly())
     rows.push(ckRow('bad', 'Running on a local address',
       'Sync and the friend link only work on the real web address.'));
@@ -1805,9 +1812,15 @@ async function syncCheck(){
         }
       }
     } catch (err) {
-      rows.push(ckRow('bad', 'Could not reach the database',
-        'Either no internet right now, the project ID or key is wrong, or the Firestore rules were never published.'));
-      if (!fix) fix = 'The app could not reach your Firebase project. Check you are online. If you are, the project ID or key is wrong, or the rules in the Firestore Rules tab were never published.';
+      if (inFrame()){
+        rows.push(ckRow('bad', 'This copy is a preview, and previews cannot sync',
+          'It is running inside another page, which is not allowed to call out to the database. Nothing above this is wrong.'));
+        fix = 'Syncing cannot be tested here. A preview is sealed off from the outside, so the app never gets to ask your database anything. Open the real address instead and everything on this list will work.';
+      } else {
+        rows.push(ckRow('bad', 'Could not reach the database',
+          'Either no internet right now, the project ID or key is wrong, or the Firestore rules were never published.'));
+        if (!fix) fix = 'The app could not reach your Firebase project. Check you are online. If you are, the project ID or key is wrong, or the rules in the Firestore Rules tab were never published.';
+      }
     }
   }
 
