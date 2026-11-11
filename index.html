@@ -268,6 +268,13 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   background-size:100% 6px;background-repeat:no-repeat;background-position:top left;
   box-shadow:inset 0 0 0 1px rgba(232,237,242,.08)
 }
+.fghint{margin:0 0 14px}
+.fghint b{color:var(--ball);font-weight:600}
+.tag.grab{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;position:relative}
+.tag.grab::after{content:'';position:absolute;inset:-10px -8px}
+.tag.lifted{opacity:.3}
+.tag.ghost{position:fixed;z-index:60;pointer-events:none;transform:scale(1.15);box-shadow:0 10px 24px rgba(0,0,0,.5)}
+.court.swapok{box-shadow:inset 0 0 0 2px var(--ball);background:rgba(242,194,48,.08)}
 .chead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px}
 .chead h3{font-family:'Anton',Impact,sans-serif;font-weight:400;font-size:19px;text-transform:uppercase;margin:0;letter-spacing:.03em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tag{font-family:'IBM Plex Mono',monospace;font-style:normal;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:3px 8px}
@@ -305,6 +312,30 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
 .rulerow .rn{flex:1;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:14px}
 .rulerow .x{flex:none;font-size:17px;line-height:1;background:none;border:0;color:var(--slate);cursor:pointer;padding:4px 6px;border-radius:6px}
 .rulerow .x:hover{color:var(--ball)}
+.rulerow.tap{cursor:pointer;border-radius:8px}
+.rulerow.tap:hover .rn,.rulerow.tap:focus-visible .rn{color:var(--ball)}
+.rulerow.editing{border-bottom-color:transparent}
+.rulerow.editing .rn{color:var(--ball)}
+.rulerow .ed{
+  flex:none;display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:13px;font-weight:500;
+  background:none;border:1px solid var(--line);color:var(--chalk);border-radius:999px;padding:5px 11px;cursor:pointer
+}
+.rulerow .ed:hover{border-color:var(--ball);color:var(--ball)}
+#ruleBox:not([hidden]){
+  margin:2px 0 10px;padding:14px;border:1px solid rgba(242,194,48,.45);border-radius:12px;background:rgba(8,21,37,.55)
+}
+#ruleBox .boxhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+#ruleBox .boxhead b{font-family:'Archivo',system-ui,sans-serif;font-size:15px}
+#ruleBox .count{font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--slate)}
+#ruleBox .kindrow{display:flex;align-items:center;gap:10px;margin:14px 0 2px;flex-wrap:wrap}
+#ruleBox .kindrow .lbl{font-size:13px;color:var(--slate)}
+#ruleBox .seg button{font-size:13px;padding:6px 12px}
+#ruleBox .seg button[aria-pressed="true"]{background:var(--ball);color:var(--ink);font-weight:600}
+#ruleBox .chips .chip{font-size:14px;padding:6px 11px}
+#ruleBox .fitrow .save{border-color:var(--ball);color:var(--ink);background:var(--ball);font-weight:600}
+#ruleBox .fitrow .del{margin-left:auto;color:#F08A7E;border-color:rgba(240,138,126,.4)}
+#ruleBox .fitrow .del:hover{border-color:#F08A7E;color:#F08A7E}
+#ruleDraftHint{margin-top:10px}
 .chip.picked{border-color:var(--ball);background:rgba(242,194,48,.14)}
 .slot.cap{border-color:rgba(242,194,48,.55)}
 .slot .capb{
@@ -485,12 +516,21 @@ a.ghost.wa:hover{border-color:#25D366;color:#25D366}
   <div class="label"><span>Pairing rules</span></div>
   <div id="ruleList"></div>
   <div id="ruleBox" hidden>
-    <p class="hint" style="margin-top:8px">Tap everyone this rule covers, then say what it does.</p>
+    <div class="boxhead"><b id="ruleBoxTitle">New rule</b><span class="count" id="ruleCount"></span></div>
+    <p class="hint" style="margin:0 0 10px">Tap a name to add it to the rule or take it out.</p>
     <div class="chips" id="rulePick"></div>
+    <div class="kindrow">
+      <span class="lbl">This rule keeps them</span>
+      <div class="seg" role="group" aria-label="What the rule does">
+        <button type="button" id="ruleApart" aria-pressed="true">Never together</button>
+        <button type="button" id="ruleWith" aria-pressed="false">Always together</button>
+      </div>
+    </div>
+    <p class="hint" id="ruleDraftHint" hidden></p>
     <div class="fitrow">
-      <button class="ghost" id="ruleApart">Never together</button>
-      <button class="ghost" id="ruleWith">Always together</button>
+      <button class="ghost save" id="ruleSave">Save rule</button>
       <button class="ghost" id="ruleCancel">Cancel</button>
+      <button class="ghost del" id="ruleDel" hidden>Delete rule</button>
     </div>
   </div>
   <button class="ghost" id="ruleAdd" style="width:100%;margin-top:10px">Add a rule</button>
@@ -856,21 +896,12 @@ function pickTeam(){
   // so the strong players never stack on one side
   const sides = dealEven(chosen, S.sizes, week);
 
-  // which two sides start, and who waits — the side that has waited least goes next
+  // which two sides start, and who waits. Last week's opening pair does not open
+  // again: if A and B started last week, this week it is A v C or B v C.
   let first = sides.map((_, i) => i), waiting = [];
   if (sides.length > 2){
-    // the side whose players have waited most always plays; its opponent is drawn at
-    // random, a side that has waited more being likelier — so it isn't always A vs B
-    const load = sides.map((s, i) => ({ i, w: s.reduce((a,p) => a + (p.sits || 0), 0) / (s.length || 1) }));
-    load.sort((a,b) => b.w - a.w || Math.random() - 0.5);
-    const play = [load[0].i], rest2 = load.slice(1);
-    const wt = x => (x.w + 1) * (x.w + 1);
-    const tot = rest2.reduce((a,x) => a + wt(x), 0);
-    let r = Math.random() * tot, k = 0;
-    while (k < rest2.length - 1 && (r -= wt(rest2[k])) > 0) k++;
-    play.push(rest2[k].i);
-    first   = shuffle(play.slice());                 // C vs A as readily as A vs C
-    waiting = sides.map((_, i) => i).filter(i => !first.includes(i)).sort((a,b) => a - b);
+    first = pickFirstPair(sides.length);
+    waiting = sides.map((_, i) => i).filter(i => !first.includes(i));
     waiting.forEach(i => sides[i].forEach(p => p.sits = (p.sits || 0) + 1));
   }
 
@@ -1004,7 +1035,7 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
 
   return `<div class="court" data-side="${t}">
     <div class="chead">
-      <h3>Team ${LET[t] || t + 1}${tag ? `<i class="tag ${tag === 'waits' ? 'wait' : 'go'}">${tag === 'waits' ? 'waits' : (onNow ? 'on court' : 'plays first')}</i>` : ''}</h3>
+      <h3>Team ${LET[t] || t + 1}${tag ? `<i class="tag ${tag === 'waits' ? 'wait' : 'go'} grab" data-tagside="${t}" data-tagkind="${tag}" title="Drag onto another team to swap">${tag === 'waits' ? 'waits' : (onNow ? 'on court' : 'plays first')}</i>` : ''}</h3>
       <span>${cap ? `C: ${esc(cap)} · ` : ''}${ps.length} players${showRanks() ? ` <b class="avg">avg ${avg}</b>` : ''}</span>
     </div>
     <div class="grid">${cells}</div>
@@ -1013,6 +1044,58 @@ function courtHTML(names, t, sizes, tag, cap, onNow){
 
 /* Which two sides start, so the third can be marked as waiting. Nothing tracks
    the games themselves — you all know who won without the app telling you. */
+/* The opening pair is remembered apart from the history, because "Clear the
+   teams" wipes the history and last week's pair still has to count. Picking
+   again on the same day keeps the same base, so a re-pick does not rotate twice. */
+const dayKey = () => new Date().toLocaleDateString('en-CA');
+function pickFirstPair(n){
+  const today = dayKey();
+  if (S.firstNow && S.firstNow.day !== today) S.firstPrev = S.firstNow;
+  // a team letter that does not exist this week (D last week, three teams now) is
+  // dropped, but the other team in that pair still counts as having started
+  const kept = S.firstPrev && Array.isArray(S.firstPrev.pair)
+             ? S.firstPrev.pair.filter(i => i < n) : [];
+  const prev = kept.length ? kept : null;
+  const pairs = [];
+  for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) pairs.push([a, b]);
+  let best = pairs;
+  if (prev){
+    const same = q => prev.length === 2 && q.includes(prev[0]) && q.includes(prev[1]);
+    const rested = q => q.filter(i => !prev.includes(i)).length;     // sides that waited last week
+    const ok = pairs.filter(q => !same(q));
+    const top = Math.max(...ok.map(rested));
+    best = ok.filter(q => rested(q) === top);
+  }
+  const pair = best[Math.floor(Math.random() * best.length)].slice();
+  S.firstNow = { pair, day: today, auto: true };
+  return pair;
+}
+/* Changing the opening pair by hand moves the "waited" count with it. */
+function setFirstPair(pair){
+  const last = S.history[S.history.length - 1]; if (!last || !last.sides) return;
+  const n = last.sides.length;
+  const oldWait = (last.waiting || []).slice();
+  const newWait = last.sides.map((_, i) => i).filter(i => !pair.includes(i));
+  const bump = (t, d) => last.sides[t].forEach(name => {
+    const p = S.roster.find(x => x.name === name);
+    if (p) p.sits = Math.max(0, (p.sits || 0) + d);
+  });
+  oldWait.filter(t => !newWait.includes(t)).forEach(t => bump(t, -1));
+  newWait.filter(t => !oldWait.includes(t)).forEach(t => bump(t, +1));
+  last.first = pair.slice(); last.playing = pair.slice(); last.waiting = newWait;
+  S.firstNow = { pair: pair.slice(), day: (S.firstNow && S.firstNow.day) || dayKey(), auto: false };
+  render(); save();
+}
+function firstGameHTML(last){
+  const n = last.sides.length;
+  const prev = S.firstPrev && S.firstPrev.pair;
+  const why = S.firstNow && S.firstNow.auto === false
+    ? 'You set who plays first.'
+    : prev && prev.length === 2
+    ? `Team ${LET[prev[0]]} vs Team ${LET[prev[1]]} started last week, so they don't both start again.`
+    : 'Picked for you.';
+  return `<p class="hint fghint">${why} To change it, drag a <b>Plays first</b> tag onto a team that waits.</p>`;
+}
 function fixSession(h){
   if (!h || !Array.isArray(h.sides)) return;
   const n = h.sides.length;
@@ -1148,6 +1231,7 @@ function render(){
     const tagOf = t => sides.length < 3 ? '' : (live.includes(t) ? 'plays' : 'waits');
     fixCaps(last);
     document.getElementById('lineup').innerHTML =
+      (sides.length > 2 ? firstGameHTML(last) : '') +
       sides.map((s, t) => courtHTML(s, t, last.sizes, tagOf(t), (last.caps || [])[t], false)).join('')
       + `<p class="hint">Hold a player and drag them onto another team to move them, or straight onto another player to swap the two. Tap a player to make them captain.</p>`;
   } else ls.hidden = true;
@@ -1630,7 +1714,10 @@ async function sealRoster(code){
     week: {
       playing: S.roster.filter(p => p.available).map(p => p.name),
       history: S.history, results: S.results, note: S.note,
-      n: S.week, teams: S.teams, size: S.size, sizes: S.sizes
+      n: S.week, teams: S.teams, size: S.size, sizes: S.sizes,
+      // which two teams started, this week and last, so the next pick on either
+      // phone rotates off the same pair
+      first: { now: S.firstNow || null, prev: S.firstPrev || null }
     }
   });
   const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, TE.encode(body));
@@ -1690,6 +1777,11 @@ async function vaultPull(code){
     if (typeof w.teams === 'number') S.teams = w.teams;
     if (typeof w.size === 'number')  S.size  = w.size;
     if (Array.isArray(w.sizes))      S.sizes = w.sizes;
+    // an older vault has no first-game record; then this phone keeps its own
+    if (w.first && typeof w.first === 'object'){
+      S.firstNow  = w.first.now  || null;
+      S.firstPrev = w.first.prev || null;
+    }
   }
   if (Array.isArray(data.captains)) S.captains = data.captains;
   if (Array.isArray(data.apart))    S.apart = data.apart;
@@ -2067,27 +2159,63 @@ document.getElementById('capsSection').addEventListener('click', e => {
 });
 
 /* ---------- pairing rules ---------- */
+/* One editor serves both jobs. Adding a rule opens it under the list; tapping a
+   rule opens it right under that rule with its names already picked, so a rule
+   can be trimmed, grown, or flipped between never and always without deleting
+   it and starting again. */
 let ruleDraft = [];
+let ruleKind  = 'apart';
+let ruleEdit  = null;                 // { kind, k } while an existing rule is open
+const ruleList = kind => kind === 'apart' ? S.apart : S.together;
+
 function renderRules(){
   const sec = document.getElementById('rulesSection');
   sec.hidden = !!S.guest;
   if (S.guest) return;
+  const box  = document.getElementById('ruleBox');
+  const list = document.getElementById('ruleList');
+  // park the editor before the list is redrawn, so it is not wiped with it
+  sec.insertBefore(box, document.getElementById('ruleAdd'));
   const rows = []
     .concat((S.apart || []).map((g,k) => ({ g, k, kind:'apart' })))
     .concat((S.together || []).map((g,k) => ({ g, k, kind:'with' })));
-  document.getElementById('ruleList').innerHTML = rows.length
-    ? rows.map(r => `<div class="rulerow">
+  const isOpen = r => ruleEdit && ruleEdit.kind === r.kind && ruleEdit.k === r.k;
+  list.innerHTML = rows.length
+    ? rows.map(r => `<div class="rulerow tap${isOpen(r) ? ' editing' : ''}" role="button" tabindex="0"
+          data-edit="${r.kind}" data-k="${r.k}" aria-label="Edit this rule">
         <span class="rt ${r.kind}">${r.kind === 'apart' ? 'never together' : 'always together'}</span>
         <span class="rn">${r.g.map(esc).join(' · ')}</span>
-        <button class="x" data-rule="${r.kind}" data-k="${r.k}" aria-label="Remove this rule">×</button>
+        <button class="ed" data-edit="${r.kind}" data-k="${r.k}" tabindex="-1">${isOpen(r) ? 'Editing' : 'Edit'}</button>
       </div>`).join('')
     : `<p class="hint" style="margin-top:8px">No rules yet.</p>`;
-  const box = document.getElementById('ruleBox');
+
   if (!box.hidden){
-    document.getElementById('rulePick').innerHTML = S.roster.map(p =>
-      `<button class="chip${ruleDraft.includes(p.name) ? ' picked' : ''}" data-pick="${esc(p.name)}">
-         <span>${esc(p.name)}</span></button>`).join('');
+    if (ruleEdit){
+      const row = list.querySelector(`.rulerow[data-edit="${ruleEdit.kind}"][data-k="${ruleEdit.k}"]`);
+      if (row) row.after(box);
+    }
+    document.getElementById('ruleBoxTitle').textContent = ruleEdit ? 'Edit rule' : 'New rule';
+    document.getElementById('ruleDel').hidden = !ruleEdit;
+    document.getElementById('ruleCount').textContent =
+      ruleDraft.length ? `${ruleDraft.length} picked` : 'none picked';
+    document.getElementById('ruleApart').setAttribute('aria-pressed', ruleKind === 'apart');
+    document.getElementById('ruleWith').setAttribute('aria-pressed', ruleKind === 'with');
+    // names that are in the rule first, then everyone else A–Z
+    const inRule = ruleDraft.filter(n => S.roster.some(p => p.name === n));
+    const rest = S.roster.map(p => p.name).filter(n => !ruleDraft.includes(n))
+      .sort((a, b) => a.localeCompare(b));
+    document.getElementById('rulePick').innerHTML = inRule.concat(rest).map(n =>
+      `<button class="chip${ruleDraft.includes(n) ? ' picked' : ''}" data-pick="${esc(n)}">
+         <span>${esc(n)}</span></button>`).join('');
+    // say straight away if this rule will be too big to keep
+    const sidesNow = S.sizes.length || 1;
+    const dh = document.getElementById('ruleDraftHint');
+    const over = ruleKind === 'apart' && sidesNow > 2 && ruleDraft.length > sidesNow;
+    dh.hidden = !over;
+    dh.classList.toggle('warn', over);
+    if (over) dh.textContent = `${ruleDraft.length} names but only ${sidesNow} sides this week, so ${ruleDraft.length - sidesNow === 1 ? 'one of them has' : (ruleDraft.length - sidesNow) + ' of them have'} to share a side. Keep it to ${sidesNow} or fewer to be sure they are all split up.`;
   }
+
   /* A never-together rule with more names in it than there are sides cannot be
      kept, and the app has to pick which pair to put together. Two smaller rules
      almost always beat one big one, so say so where the rule is made. */
@@ -2096,47 +2224,78 @@ function renderRules(){
   const hint = document.getElementById('ruleHint');
   hint.classList.toggle('warn', tooBig.length > 0);
   hint.textContent = tooBig.length
-    ? (n => `${tooBig[0].length} names in one never-together rule but only ${sides} sides this week — ${n === 1 ? 'one of them has' : n + ' of them have'} to share a side, and the app chooses which. Splitting it into smaller rules keeps the ones that matter most apart.`)(tooBig[0].length - sides)
+    ? (n => `${tooBig[0].length} names in one never-together rule but only ${sides} sides this week — ${n === 1 ? 'one of them has' : n + ' of them have'} to share a side, and the app chooses which. Tap the rule to edit it, or split it into smaller rules to keep the ones that matter most apart.`)(tooBig[0].length - sides)
     : (S.apart || []).length || (S.together || []).length
-    ? 'Never-together is set aside when there are only two sides, since some groups cannot be split that far.'
+    ? 'Tap a rule to change who is in it. Never-together is set aside when there are only two sides, since some groups cannot be split that far.'
     : 'Add players who should never be on the same side, or who always want to be.';
+}
+function closeRuleBox(){
+  document.getElementById('ruleBox').hidden = true;
+  document.getElementById('ruleAdd').textContent = 'Add a rule';
+  ruleDraft = []; ruleEdit = null; ruleKind = 'apart';
+  renderRules();
+}
+function openRule(kind, k){
+  const g = ruleList(kind)[k]; if (!g) return;
+  ruleEdit = { kind, k }; ruleKind = kind; ruleDraft = g.slice();
+  document.getElementById('ruleBox').hidden = false;
+  document.getElementById('ruleAdd').textContent = 'Add a rule';
+  renderRules();
+  document.getElementById('ruleBox').scrollIntoView({ block:'nearest', behavior:'smooth' });
 }
 document.getElementById('ruleAdd').onclick = () => {
   const box = document.getElementById('ruleBox');
-  box.hidden = !box.hidden;
-  ruleDraft = [];
-  document.getElementById('ruleAdd').textContent = box.hidden ? 'Add a rule' : 'Close';
+  if (!box.hidden && !ruleEdit) return closeRuleBox();
+  ruleEdit = null; ruleDraft = []; ruleKind = 'apart';
+  box.hidden = false;
+  document.getElementById('ruleAdd').textContent = 'Close';
   renderRules();
 };
-document.getElementById('ruleCancel').onclick = () => {
-  document.getElementById('ruleBox').hidden = true;
-  document.getElementById('ruleAdd').textContent = 'Add a rule';
-  ruleDraft = []; renderRules();
-};
+document.getElementById('ruleCancel').onclick = closeRuleBox;
 document.getElementById('rulePick').addEventListener('click', e => {
   const b = e.target.closest('[data-pick]'); if (!b) return;
   const n = b.dataset.pick;
   ruleDraft = ruleDraft.includes(n) ? ruleDraft.filter(x => x !== n) : ruleDraft.concat(n);
   renderRules();
 });
-function saveRule(kind){
+document.getElementById('ruleApart').onclick = () => { ruleKind = 'apart'; renderRules(); };
+document.getElementById('ruleWith').onclick  = () => { ruleKind = 'with';  renderRules(); };
+document.getElementById('ruleSave').onclick = () => {
   if (ruleDraft.length < 2){
-    document.getElementById('ruleHint').textContent = 'Pick at least two players first.';
+    const dh = document.getElementById('ruleDraftHint');
+    dh.hidden = false; dh.classList.add('warn');
+    dh.textContent = 'Pick at least two players first.';
     return;
   }
-  (kind === 'apart' ? S.apart : S.together).push(ruleDraft.slice());
-  ruleDraft = [];
+  const names = ruleDraft.slice();
+  if (ruleEdit){
+    if (ruleEdit.kind === ruleKind) ruleList(ruleKind)[ruleEdit.k] = names;   // same spot in the list
+    else { ruleList(ruleEdit.kind).splice(ruleEdit.k, 1); ruleList(ruleKind).push(names); }
+  } else {
+    ruleList(ruleKind).push(names);
+  }
+  ruleDraft = []; ruleEdit = null; ruleKind = 'apart';
   document.getElementById('ruleBox').hidden = true;
   document.getElementById('ruleAdd').textContent = 'Add a rule';
   render(); save();
-}
-document.getElementById('ruleApart').onclick = () => saveRule('apart');
-document.getElementById('ruleWith').onclick  = () => saveRule('with');
-document.getElementById('ruleList').addEventListener('click', e => {
-  const b = e.target.closest('[data-rule]'); if (!b) return;
-  const list = b.dataset.rule === 'apart' ? S.apart : S.together;
-  list.splice(+b.dataset.k, 1);
+};
+document.getElementById('ruleDel').onclick = () => {
+  if (!ruleEdit) return;
+  ruleList(ruleEdit.kind).splice(ruleEdit.k, 1);
+  ruleDraft = []; ruleEdit = null; ruleKind = 'apart';
+  document.getElementById('ruleBox').hidden = true;
   render(); save();
+};
+document.getElementById('ruleList').addEventListener('click', e => {
+  const b = e.target.closest('[data-edit]'); if (!b) return;
+  const kind = b.dataset.edit, k = +b.dataset.k;
+  if (ruleEdit && ruleEdit.kind === kind && ruleEdit.k === k) return closeRuleBox();
+  openRule(kind, k);
+});
+document.getElementById('ruleList').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const r = e.target.closest('.rulerow[data-edit]'); if (!r) return;
+  e.preventDefault(); r.click();
 });
 
 /* ---------- a backup file ---------- */
@@ -2254,6 +2413,76 @@ document.getElementById('impApply').onclick = () => {
     `${r.added} added${r.updated ? `, ${r.updated} rating${r.updated > 1 ? 's' : ''} updated` : ''}. Nobody was removed.`;
   render(); save();
 };
+
+/* ---------- dragging the Plays first / Waits tags ----------
+   Drop a Plays first tag on a team that waits and the two swap; drop a Waits
+   tag on a team that plays first and they swap the same way. Touch-action is
+   off on the tag itself, so the drag starts at once without a long press. */
+let tagDrag = null;
+function courtAt(x, y){
+  if (tagDrag && tagDrag.ghost) tagDrag.ghost.style.display = 'none';
+  const el = document.elementFromPoint(x, y);
+  if (tagDrag && tagDrag.ghost) tagDrag.ghost.style.display = '';
+  const c = el && el.closest ? el.closest('.court[data-side]') : null;
+  return c && +c.dataset.side !== tagDrag.side ? c : null;
+}
+function swapTarget(c){
+  if (!c) return null;
+  const last = S.history[S.history.length - 1]; if (!last) return null;
+  const t = +c.dataset.side, playing = last.playing || last.first || [];
+  const tPlays = playing.includes(t);
+  // only a playing tag onto a waiting team, or the other way round, changes anything
+  return (tagDrag.kind === 'plays') !== tPlays ? t : null;
+}
+function tagMark(x, y){
+  document.querySelectorAll('.court.swapok').forEach(n => n.classList.remove('swapok'));
+  const c = courtAt(x, y);
+  if (swapTarget(c) !== null) c.classList.add('swapok');
+}
+function tagStart(el, x, y){
+  const r = el.getBoundingClientRect();
+  const g = el.cloneNode(true);
+  g.classList.add('ghost'); g.classList.remove('grab');
+  document.body.appendChild(g);
+  tagDrag = { el, side:+el.dataset.tagside, kind:el.dataset.tagkind, ghost:g, w:r.width, h:r.height, moved:false, sx:x, sy:y };
+  el.classList.add('lifted');
+  tagMove(x, y);
+  try { if (navigator.vibrate) navigator.vibrate(12); } catch(err){}
+}
+function tagMove(x, y){
+  if (!tagDrag) return;
+  if (Math.hypot(x - tagDrag.sx, y - tagDrag.sy) > 4) tagDrag.moved = true;
+  tagDrag.ghost.style.left = (x - tagDrag.w / 2) + 'px';
+  tagDrag.ghost.style.top  = (y - tagDrag.h / 2) + 'px';
+  tagMark(x, y);
+}
+function tagEnd(x, y){
+  const d = tagDrag; if (!d) return;
+  const t = swapTarget(courtAt(x, y));
+  d.ghost.remove(); d.el.classList.remove('lifted');
+  document.querySelectorAll('.court.swapok').forEach(n => n.classList.remove('swapok'));
+  tagDrag = null;
+  if (t === null) return;
+  const last = S.history[S.history.length - 1];
+  const pair = (last.playing || last.first).slice();
+  if (d.kind === 'plays') pair[pair.indexOf(d.side)] = t;    // the dropped-on team plays instead
+  else                    pair[pair.indexOf(t)] = d.side;    // the waiting team takes its place
+  setFirstPair(pair.sort((a, b) => a - b));
+}
+function tagCancel(){
+  if (!tagDrag) return;
+  tagDrag.ghost.remove(); tagDrag.el.classList.remove('lifted');
+  document.querySelectorAll('.court.swapok').forEach(n => n.classList.remove('swapok'));
+  tagDrag = null;
+}
+document.getElementById('lineup').addEventListener('pointerdown', e => {
+  const el = e.target.closest && e.target.closest('.tag.grab[data-tagside]'); if (!el) return;
+  e.preventDefault(); e.stopPropagation();
+  tagStart(el, e.clientX, e.clientY);
+}, true);
+document.addEventListener('pointermove', e => { if (tagDrag){ e.preventDefault(); tagMove(e.clientX, e.clientY); } }, { passive:false });
+document.addEventListener('pointerup', e => { if (tagDrag) tagEnd(e.clientX, e.clientY); });
+document.addEventListener('pointercancel', tagCancel);
 
 /* ---------- dragging players between the sides ---------- */
 let drag = null;
