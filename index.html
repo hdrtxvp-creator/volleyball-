@@ -152,9 +152,14 @@ details.fold>:not(summary)>p:first-child{display:none}
 .chip .x:hover{color:var(--ball)}
 
 /* ranking rows */
-.rrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 2px;border-bottom:1px solid var(--line)}
+/* Two lines on purpose. Squeezed onto one, the name was cut off and the stars
+   were pushed into whatever space was left over -- on a phone the whole point
+   of this screen ended up the narrowest thing on it. */
+.rrow{display:grid;grid-template-columns:1fr auto;gap:7px 10px;padding:11px 2px;border-bottom:1px solid var(--line)}
 .rrow:last-child{border-bottom:0}
-.rrow .rname{flex:1 1 84px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.01em}
+.rtop{display:flex;align-items:center;gap:9px;min-width:0;grid-column:1 / -1}
+.rbot{display:flex;align-items:center;gap:12px;grid-column:1 / -1}
+.rrow .rname{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:16px;letter-spacing:.01em}
 .av{
   flex:none;font:inherit;font-size:11px;font-family:'Archivo',system-ui,sans-serif;cursor:pointer;
   border:1px solid var(--line);background:transparent;color:var(--slate);
@@ -167,19 +172,27 @@ details.fold>:not(summary)>p:first-child{display:none}
 .rrow.out .rname{color:var(--slate)}
 .rrow .rname{cursor:text}
 .rrow input.rname{flex:1 1 84px;min-width:0;background:#0C1C31;border:1px solid var(--ball);border-radius:8px;color:var(--chalk);padding:4px 6px;font-family:'Archivo',system-ui,sans-serif;font-weight:600;font-size:15px;letter-spacing:.01em;outline:none}
-.stars{display:flex;gap:4px;flex:none}
-.stars button{
-  width:26px;height:26px;border-radius:50%;cursor:pointer;
-  border:1px solid var(--line);background:var(--ink);padding:0
+/* Five stars you drag across rather than five circles with a hidden left half.
+   touch-action:none so a drag sets the rating instead of scrolling the page. */
+.stars{
+  display:flex;gap:2px;flex:none;cursor:pointer;touch-action:none;
+  padding:6px 4px;margin:-6px -4px;border-radius:10px;
+  -webkit-tap-highlight-color:transparent;user-select:none
 }
-.stars button.on{background:var(--ball);border-color:var(--ball)}
-.stars button.half{background:linear-gradient(90deg,var(--ball) 0 50%,var(--ink) 50% 100%);border-color:var(--ball)}
-.rrow .g{width:64px;text-align:right;font-family:'Archivo',system-ui,sans-serif;font-size:11px;color:var(--slate)}
-.rrow .g b{color:var(--chalk);font-weight:500;font-size:13px}
+.stars:focus-visible{outline:2px solid var(--ball);outline-offset:1px}
+.stars.live{background:rgba(242,194,48,.10)}
+.star{
+  width:30px;height:30px;flex:none;position:relative;background:#22344B;
+  clip-path:polygon(50% 2%,61% 36%,97% 36%,68% 57%,79% 92%,50% 70%,21% 92%,32% 57%,3% 36%,39% 36%)
+}
+.star i{display:block;height:100%;background:var(--ball)}
+.stars.live .star i{background:#FFD75E}
+@media (max-width:420px){ .star{width:27px;height:27px} }
+.rrow .g{flex:1 1 auto;text-align:left;font-family:'Archivo',system-ui,sans-serif;font-size:12px;color:var(--slate)}
+.rrow .g b{color:var(--ball);font-weight:700;font-size:16px}
 .rrow.hit{animation:flash 1s ease}
 @keyframes flash{0%{background:rgba(242,194,48,.22)}100%{background:transparent}}
 @media (prefers-reduced-motion:reduce){.rrow.hit{animation:none;background:rgba(242,194,48,.12)}}
-.stars button{touch-action:manipulation}
 .hint{font-size:13px;color:var(--slate);margin:12px 0 0}
 .hint.warn{color:var(--ball);font-weight:600;background:rgba(242,194,48,.12);border-left:3px solid var(--ball);padding:9px 11px;border-radius:8px}
 
@@ -938,7 +951,16 @@ function undo(){
 const fmtRank = r => (Math.round(r * 2) / 2).toFixed(1).replace(/\.0$/, '');
 const pips = r => { const f = Math.floor(r); return '\u25CF'.repeat(f) + (r > f ? '\u25D0' : ''); };
 const dots = r => { const f = Math.floor(r), h = r > f ? 1 : 0;
-  return '\u25CF'.repeat(f) + (h ? '\u25D0' : '') + '\u25CB'.repeat(Math.max(0, 5 - f - h)); };
+  return '\u2605'.repeat(f) + (h ? '\u00BD' : '') + '\u2606'.repeat(Math.max(0, 5 - f - h)); };
+/* Each star fills 0, half or all the way, so 3.5 reads as three and a half. */
+function starsHTML(r){
+  let out = '';
+  for (let i = 1; i <= 5; i++){
+    const w = r >= i ? 100 : r >= i - 0.5 ? 50 : 0;
+    out += `<span class="star"><i style="width:${w}%"></i></span>`;
+  }
+  return out;
+}
 const showRanks = () => !S.guest && !S.hideRanks;
 
 let chipsCompact = false;
@@ -948,15 +970,20 @@ function rosterHTML(){
   if (S.view === 'ranks'){
     const rows = S.roster.map(p => `
       <div class="rrow${p.available ? '' : ' out'}${p.name === justRanked ? ' hit' : ''}">
-        <button class="av${p.available ? ' in' : ''}" data-act="toggle" data-name="${esc(p.name)}" aria-pressed="${p.available}">${p.available ? 'Playing' : 'Not coming'}</button>
-        ${editing === p.name
-          ? `<input class="rname" id="renameBox" value="${esc(p.name)}" autocomplete="off" autocapitalize="words" spellcheck="false" aria-label="New name for ${esc(p.name)}">`
-          : `<span class="rname" data-act="rename" data-name="${esc(p.name)}" title="Tap to rename">${esc(p.name)}</span>`}
-        <div class="stars" role="group" aria-label="Ranking for ${esc(p.name)}">
-          ${[1,2,3,4,5].map(i => `<button class="${i <= p.rank ? 'on' : (p.rank === i - 0.5 ? 'half' : '')}" data-act="rank" data-name="${esc(p.name)}" data-r="${i}" title="Tap the left half for ${i - 0.5}, the right half for ${i}" aria-label="Rank ${esc(p.name)} ${i} of 5 — tap the left half for ${i - 0.5}"></button>`).join('')}
+        <div class="rtop">
+          ${editing === p.name
+            ? `<input class="rname" id="renameBox" value="${esc(p.name)}" autocomplete="off" autocapitalize="words" spellcheck="false" aria-label="New name for ${esc(p.name)}">`
+            : `<span class="rname" data-act="rename" data-name="${esc(p.name)}" title="Tap to rename">${esc(p.name)}</span>`}
+          <button class="av${p.available ? ' in' : ''}" data-act="toggle" data-name="${esc(p.name)}" aria-pressed="${p.available}">${p.available ? 'Playing' : 'Not coming'}</button>
+          <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
         </div>
-        <span class="g"><b>${fmtRank(p.rank)}</b>/5 · ${p.games}g</span>
-        <button class="x" data-act="remove" data-name="${esc(p.name)}" aria-label="Remove ${esc(p.name)}">×</button>
+        <div class="rbot">
+          <div class="stars" data-rate="${esc(p.name)}" tabindex="0" role="slider"
+               aria-label="Rating for ${esc(p.name)}" aria-valuemin="1" aria-valuemax="5"
+               aria-valuenow="${p.rank}" aria-valuetext="${fmtRank(p.rank)} out of 5"
+               title="Drag across the stars, or tap one. Arrow keys work too.">${starsHTML(p.rank)}</div>
+          <span class="g"><b>${fmtRank(p.rank)}</b><span style="opacity:.7">/5</span> · ${p.games}g</span>
+        </div>
       </div>`).join('');
     return rows + `<div class="fitrow">
         <button class="ghost" data-act="sortrank">Sort by ranking</button>
@@ -1040,7 +1067,7 @@ function render(){
   document.getElementById('rosterBody').innerHTML = rosterHTML();
   document.getElementById('rosterHint').textContent = !S.roster.length ? '' :
     (S.view === 'ranks'
-      ? 'Tap the dots to rank each player from 1 to 5 — everyone starts at 3. The left half of a dot gives the half step, so the left of the 5th dot is 4.5. Tap a name to change its spelling. Playing / Not coming decides who gets picked this week; × removes them for good.'
+      ? 'Slide your finger across the stars to rate each player out of 5 — everyone starts at 3, and half stars count. Tap a name to change its spelling. Playing / Not coming decides who gets picked this week; × removes them for good.'
       : 'Tap a name to mark them not coming this week, tap again to bring them back. Tap × to remove them for good. Add players below.');
   document.querySelectorAll('#viewSeg button').forEach(b =>
     b.setAttribute('aria-pressed', String(b.dataset.view === S.view)));
@@ -1275,19 +1302,90 @@ function rosterClick(e){
     });
     return;
   }
-  else if (act === 'rank'){
-    delete p.isNew;
-    const r = +el.dataset.r, b = el.getBoundingClientRect();
-    const tappedLeft = e.detail > 0 && b.width && (e.clientX - b.left) < b.width / 2;
-    p.rank = clamp(tappedLeft ? r - 0.5 : r, 1, 5);
-    justRanked = p.name;
-  }
   else if (act === 'rename'){ editing = p.name; justRanked = null; render(); return; }
   else if (act === 'toggle'){
     p.available = !p.available;
   }
   render(); save();
 }
+/* ---------- rating by dragging ----------
+   The whole strip is the control. Press anywhere on it and slide: the stars
+   fill as your finger moves and the number keeps up, so you can feel your way
+   to 3.5 instead of aiming at the left half of a 26-pixel circle. Nothing is
+   written down until you let go, and the list is not redrawn mid-drag, which
+   would yank the stars out from under you. */
+function rateFromX(track, x){
+  const stars = [...track.querySelectorAll('.star')];
+  if (!stars.length) return 1;
+  const first = stars[0].getBoundingClientRect(), last = stars[4].getBoundingClientRect();
+  if (x <= first.left) return 0.5;
+  if (x >= last.right) return 5;
+  for (let i = 0; i < 5; i++){
+    const b = stars[i].getBoundingClientRect();
+    if (x <= b.right) return i + (x < b.left + b.width / 2 ? 0.5 : 1);
+  }
+  return 5;
+}
+function paintStars(track, r){
+  track.innerHTML = starsHTML(r);
+  track.setAttribute('aria-valuenow', r);
+  track.setAttribute('aria-valuetext', fmtRank(r) + ' out of 5');
+  const g = track.parentElement.querySelector('.g b');
+  if (g) g.textContent = fmtRank(r);
+}
+
+let rating = null;
+function startRate(e){
+  const track = e.target.closest('.stars');
+  if (!track) return;
+  const p = S.roster.find(x => x.name === track.dataset.rate);
+  if (!p) return;
+  e.preventDefault();
+  rating = { track, p, r: clamp(rateFromX(track, e.clientX), 0.5, 5) };
+  track.classList.add('live');
+  try { track.setPointerCapture(e.pointerId); } catch (err){}
+  paintStars(track, rating.r);
+}
+function moveRate(e){
+  if (!rating) return;
+  e.preventDefault();
+  const r = clamp(rateFromX(rating.track, e.clientX), 0.5, 5);
+  if (r !== rating.r){ rating.r = r; paintStars(rating.track, r); }
+}
+function endRate(){
+  if (!rating) return;
+  const { track, p, r } = rating;
+  rating = null;
+  track.classList.remove('live');
+  /* Half a star is as low as the strip goes; 0.5 would be a sixth grade nobody
+     uses, so dragging off the left end lands on 1. */
+  p.rank = clamp(r < 1 ? 1 : r, 1, 5);
+  delete p.isNew;
+  justRanked = p.name;
+  render(); save();
+}
+const rosterBody = document.getElementById('rosterBody');
+rosterBody.addEventListener('pointerdown', startRate);
+rosterBody.addEventListener('pointermove', moveRate);
+rosterBody.addEventListener('pointerup', endRate);
+rosterBody.addEventListener('pointercancel', endRate);
+/* Arrow keys for anyone who would rather not drag at all. */
+rosterBody.addEventListener('keydown', e => {
+  const track = e.target.closest && e.target.closest('.stars');
+  if (!track) return;
+  const p = S.roster.find(x => x.name === track.dataset.rate);
+  if (!p) return;
+  const step = { ArrowRight: .5, ArrowUp: .5, ArrowLeft: -.5, ArrowDown: -.5 }[e.key];
+  if (step === undefined && e.key !== 'Home' && e.key !== 'End') return;
+  e.preventDefault();
+  p.rank = e.key === 'Home' ? 1 : e.key === 'End' ? 5 : clamp(p.rank + step, 1, 5);
+  delete p.isNew;
+  justRanked = p.name;
+  render(); save();
+  const again = document.querySelector(`.stars[data-rate="${CSS.escape(p.name)}"]`);
+  if (again) again.focus();
+});
+
 document.getElementById('rosterBody').addEventListener('keydown', e => {
   if (e.target.id === 'renameBox'){
     if (e.key === 'Enter'){ e.preventDefault(); commitRename(e.target.value); }
